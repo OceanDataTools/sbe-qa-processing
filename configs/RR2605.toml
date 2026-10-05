@@ -1,0 +1,37 @@
+# Generated from r2r_qa.2.0.xml
+[cruise]
+id = "RR2605"
+name = "R/V Roger Revelle Annual Instrumentation Calibrations"
+vessel_id = "33RR"
+operator_id = "edu.ucsd.sio"
+scheduler_id = "org.unols"
+depart_date = 2026-07-21
+arrive_date = 2026-07-24
+
+[cruise.extent]
+westernmost = -118.632308
+easternmost = -117.224462
+southernmost = 32.61502
+northernmost = 33.370637
+
+[cruise.depart_port]
+name = "San Diego"
+port_id = "100055"
+country_id = "us"
+state_id = "ca"
+longitude = -117.175
+latitude = 32.71667
+
+[cruise.arrive_port]
+name = "San Diego"
+port_id = "100055"
+country_id = "us"
+state_id = "ca"
+longitude = -117.175
+latitude = 32.71667
+
+[fileset]
+id = 170644
+
+[provenance]
+distro_type = "post-cruise"

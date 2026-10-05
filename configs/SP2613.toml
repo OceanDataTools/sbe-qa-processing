@@ -1,0 +1,37 @@
+# Generated from r2r_qa.2.0.xml
+[cruise]
+id = "SP2613"
+name = "MPL Internship Program Day at Sea"
+vessel_id = "32QU"
+operator_id = "edu.ucsd.sio"
+scheduler_id = "org.unols"
+depart_date = 2026-07-09
+arrive_date = 2026-07-09
+
+[cruise.extent]
+westernmost = -117.3773103608
+easternmost = -117.2262308092
+southernmost = 32.5997440998
+northernmost = 32.7053695673
+
+[cruise.depart_port]
+name = "San Diego"
+port_id = "100055"
+country_id = "us"
+state_id = "ca"
+longitude = -117.175
+latitude = 32.71667
+
+[cruise.arrive_port]
+name = "San Diego"
+port_id = "100055"
+country_id = "us"
+state_id = "ca"
+longitude = -117.175
+latitude = 32.71667
+
+[fileset]
+id = 169847
+
+[provenance]
+distro_type = "post-cruise"

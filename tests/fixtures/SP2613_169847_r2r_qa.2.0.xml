@@ -1,0 +1,167 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<?xml-stylesheet type="text/xsl" href="https://service.rvdata.us/stylesheets/r2r_qac_v2.0.xslt"?>
+<r2r:qareport xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance" xmlns:r2r="https://service.rvdata.us/schema/r2r-2.0" xsi:schemaLocation="http://schema.rvdata.us/2.0 http://schema.rvdata.us/2.0/base.xsd">
+  <!--Rolling Deck to Repository (R2R) Quality Assessment (QA) Rollup Report-->
+  <r2r:version>2.0</r2r:version>
+  <r2r:identifier>SP2613_169847_qa</r2r:identifier>
+  <r2r:provenance>
+    <r2r:contact_institution id="us.rvdata">Rolling Deck to Repository (R2R)</r2r:contact_institution>
+    <r2r:contact_email>info@rvdata.us</r2r:contact_email>
+    <r2r:distro_type>post-cruise</r2r:distro_type>
+    <r2r:cruise_id>SP2613</r2r:cruise_id>
+    <r2r:fileset_id>169847</r2r:fileset_id>
+    <r2r:device_type>ctd</r2r:device_type>
+    <r2r:updates>
+      <r2r:update>
+        <r2r:process version="1.1">r2r_catalog_qa_bootstrap.php</r2r:process>
+        <r2r:time>2026-08-03T08:08:25Z</r2r:time>
+      </r2r:update>
+      <r2r:update description="Quality Assessment (QA)">
+        <r2r:process version="2026.5.0">r2r-ctd</r2r:process>
+        <r2r:time>2026-08-04T16:55:13Z</r2r:time>
+      </r2r:update>
+    </r2r:updates>
+  </r2r:provenance>
+  <r2r:filesetinfo>
+    <r2r:namespace>R2R</r2r:namespace>
+    <r2r:cruise>
+      <r2r:date_modified>2026-08-03T04:23:23Z</r2r:date_modified>
+      <r2r:date_issued>2026-07-22</r2r:date_issued>
+      <r2r:id>SP2613</r2r:id>
+      <r2r:cname>MPL Internship Program Day at Sea</r2r:cname>
+      <r2r:operator_id>edu.ucsd.sio</r2r:operator_id>
+      <r2r:id>SP2613</r2r:id>
+      <r2r:vessel_id>32QU</r2r:vessel_id>
+      <r2r:scheduler_id>org.unols</r2r:scheduler_id>
+      <r2r:depart_date>2026-07-09</r2r:depart_date>
+      <r2r:depart_port>
+        <r2r:port_id>100055</r2r:port_id>
+        <r2r:port_name>San Diego</r2r:port_name>
+        <r2r:country_id>us</r2r:country_id>
+        <r2r:state_id>ca</r2r:state_id>
+        <r2r:longitude>-117.17500</r2r:longitude>
+        <r2r:latitude>32.71667</r2r:latitude>
+      </r2r:depart_port>
+      <r2r:arrive_date>2026-07-09</r2r:arrive_date>
+      <r2r:arrive_port>
+        <r2r:port_id>100055</r2r:port_id>
+        <r2r:port_name>San Diego</r2r:port_name>
+        <r2r:country_id>us</r2r:country_id>
+        <r2r:state_id>ca</r2r:state_id>
+        <r2r:longitude>-117.17500</r2r:longitude>
+        <r2r:latitude>32.71667</r2r:latitude>
+      </r2r:arrive_port>
+      <r2r:extent>
+        <r2r:westernmost>-117.3773103608</r2r:westernmost>
+        <r2r:easternmost>-117.2262308092</r2r:easternmost>
+        <r2r:southernmost>32.5997440998</r2r:southernmost>
+        <r2r:northernmost>32.7053695673</r2r:northernmost>
+      </r2r:extent>
+    </r2r:cruise>
+    <r2r:fileset>
+      <r2r:date_created>2026-07-22</r2r:date_created>
+      <r2r:type>data</r2r:type>
+      <r2r:id>169847</r2r:id>
+      <r2r:parent_fileset_id/>
+      <r2r:vessel_id>32QU</r2r:vessel_id>
+      <r2r:cruise_id>SP2613</r2r:cruise_id>
+      <r2r:nav_source>0</r2r:nav_source>
+      <r2r:bathy_source>0</r2r:bathy_source>
+      <r2r:device>
+        <r2r:id>100497</r2r:id>
+        <r2r:devicetype_id>ctd</r2r:devicetype_id>
+        <r2r:make_id>com.seabird</r2r:make_id>
+        <r2r:model_id>100023</r2r:model_id>
+        <r2r:model_name>SBE-911+</r2r:model_name>
+        <r2r:location_name/>
+      </r2r:device>
+      <r2r:fileformat_id>100073</r2r:fileformat_id>
+      <r2r:fileformat_alias>seasoft-raw</r2r:fileformat_alias>
+      <r2r:proclevel>1</r2r:proclevel>
+    </r2r:fileset>
+  </r2r:filesetinfo>
+  <r2r:certificate>
+    <r2r:rating description="GREEN (G) if 100% of tests PASS, YELLOW (Y) if more than 75% of individual tests PASS, RED (R) if 75% or fewer of individual tests PASS; GREY (N) if no navigation was included in the distribution; BLACK (X) if one or more tests could not be run.">G</r2r:rating>
+    <r2r:tests>
+      <r2r:test description="GREEN if 100% of the casts have .hex/.dat, .con and .hdr files; else RED" name="Presence of All Raw Files">
+        <r2r:rating>G</r2r:rating>
+        <r2r:test_result uom="Percent">100</r2r:test_result>
+        <r2r:bounds>
+          <r2r:bound name="MinimumPercentToPass" uom="Percent">100</r2r:bound>
+        </r2r:bounds>
+      </r2r:test>
+      <r2r:test description="GREEN if 100% of the files in the manifest have valid checksums; else RED" name="Valid Checksum for All Files in Manifest">
+        <r2r:rating>G</r2r:rating>
+        <r2r:bounds>
+          <r2r:bound name="AllFilesHaveValidChecksum" uom="Unitless">True/False</r2r:bound>
+        </r2r:bounds>
+      </r2r:test>
+      <r2r:test name="Lat/Lon within NAV Ranges" description="GREEN if 100% of the profiles have lat/lon within cruise bounds; YELLOW if a few profiles without lat/lon; GRAY if no navigation was included in the distribution; else RED; BLACK if no readable lat/lon for all casts">
+        <r2r:rating>G</r2r:rating>
+        <r2r:test_result uom="Percent">100</r2r:test_result>
+        <r2r:bounds>
+          <r2r:bound name="MinimumPercentToPass" uom="Percent">100</r2r:bound>
+        </r2r:bounds>
+      </r2r:test>
+      <r2r:test name="Dates within NAV Ranges" description="GREEN if 100% of the profiles have Date within cruise bounds; YELLOW if a few profile times out of cruise bounds; GRAY if no navigation was provided in the distribution; else RED; BLACK if no readable dates to test">
+        <r2r:rating>G</r2r:rating>
+        <r2r:test_result uom="Percent">100</r2r:test_result>
+        <r2r:bounds>
+          <r2r:bound name="PercentFilesWithValidTemporalRange" uom="Percent">100</r2r:bound>
+        </r2r:bounds>
+      </r2r:test>
+    </r2r:tests>
+    <r2r:infos>
+      <r2r:info name="Total Raw Files" uom="# of .hex/.dat Files">5</r2r:info>
+      <r2r:info name="# of Casts with Bottles Fired" uom="Count">1</r2r:info>
+      <r2r:info name="Model Number of CTD Instrument" uom="Unitless">SBE911</r2r:info>
+      <r2r:info name="# of Casts with NAV for All Scans" uom="Count">4</r2r:info>
+      <r2r:info name="Casts without all Raw Files" uom="List"></r2r:info>
+      <r2r:info name="Casts with Hex file in Bad Format" uom="List"></r2r:info>
+      <r2r:info name="Casts with XMLCON/con file in Bad Format" uom="List"></r2r:info>
+      <r2r:info name="Casts with dock/deck and test in file name" uom="List">SP2613_DeckTest.hex</r2r:info>
+      <r2r:info name="Casts with temp. sensor serial number problem" uom="List"></r2r:info>
+      <r2r:info name="Casts with cond. sensor serial number problem" uom="List"></r2r:info>
+      <r2r:info name="Casts with Blank, missing, or unrecognizable NAV" uom="List"></r2r:info>
+      <r2r:info name="Casts that Failed NAV Boundary Tests" uom="List"></r2r:info>
+    </r2r:infos>
+  </r2r:certificate>
+  <r2r:filesetinfo_supplements/>
+  <r2r:references>
+    <r2r:reference src="https://service.rvdata.us/info/vessel/32QU">supporting docs (if any) for this vessel</r2r:reference>
+    <r2r:reference src="https://service.rvdata.us/info/vessel/32QU/device/100497">supporting docs (if any) for this device instance on this vessel</r2r:reference>
+    <r2r:reference src="https://service.rvdata.us/info/model/100023">supporting docs (if any) for this device make/model</r2r:reference>
+    <r2r:reference src="https://service.rvdata.us/info/format/100073">supporting docs (if any) for this file format</r2r:reference>
+    <r2r:reference src="https://service.rvdata.us/data/cruise/SP2613/fileset/169847/qa/SP2613_169847_ctd_metdata.geoCSV">Metadata for all processed CTD files on cruise SP2613 (geoCSV)</r2r:reference>
+    <r2r:reference src="https://service.rvdata.us/data/cruise/SP2613/fileset/169847/qa/config/SP2613_STATION1.txt">CTD Configuration Report: SP2613_STATION1</r2r:reference>
+    <r2r:reference src="https://service.rvdata.us/data/cruise/SP2613/fileset/169847/qa/config/SP2613_STATION2.txt">CTD Configuration Report: SP2613_STATION2</r2r:reference>
+    <r2r:reference src="https://service.rvdata.us/data/cruise/SP2613/fileset/169847/qa/config/SP2613_STATION3.txt">CTD Configuration Report: SP2613_STATION3</r2r:reference>
+    <r2r:reference src="https://service.rvdata.us/data/cruise/SP2613/fileset/169847/qa/config/SP2613_STATION4.txt">CTD Configuration Report: SP2613_STATION4</r2r:reference>
+  </r2r:references>
+  <r2r:log/>
+  <r2r:configuration/>
+  <r2r:manifest>
+    <r2r:files>
+      <r2r:file id="202952149" checksum="ecd4c7feb104ad7abc48e6ef477e3e85" order="">data/SP2613_DeckTest.bl</r2r:file>
+      <r2r:file id="202952144" checksum="8cb54e9df3ae380712ad26e524066cdb" order="">data/SP2613_DeckTest.hdr</r2r:file>
+      <r2r:file id="202952169" checksum="d6e1652b0e983c31782017809b944c6f" order="">data/SP2613_DeckTest.hex</r2r:file>
+      <r2r:file id="202952137" checksum="87d24a37a1d57bef09941df58e0b549e" order="">data/SP2613_DECKTEST.XMLCON</r2r:file>
+      <r2r:file id="202952147" checksum="81df6424f044e89473882bb73943b3fc" order="">data/SP2613_Station1.bl</r2r:file>
+      <r2r:file id="202952145" checksum="3314862d3fc7aa0fc4e577cf8f978064" order="">data/SP2613_Station1.hdr</r2r:file>
+      <r2r:file id="202952198" checksum="b9d9e9e91eb7de1ed87b25bbe02cb723" order="">data/SP2613_Station1.hex</r2r:file>
+      <r2r:file id="202952141" checksum="87d24a37a1d57bef09941df58e0b549e" order="">data/SP2613_STATION1.XMLCON</r2r:file>
+      <r2r:file id="202952148" checksum="c544e6d1e28a27c87ebb9b50f26fec09" order="">data/SP2613_Station2.bl</r2r:file>
+      <r2r:file id="202952138" checksum="1403383eff5e05c64f84e666462234c5" order="">data/SP2613_Station2.hdr</r2r:file>
+      <r2r:file id="202952241" checksum="641d542a7d7acecdc0bb4135b8344a7b" order="">data/SP2613_Station2.hex</r2r:file>
+      <r2r:file id="202952136" checksum="87d24a37a1d57bef09941df58e0b549e" order="">data/SP2613_STATION2.XMLCON</r2r:file>
+      <r2r:file id="202952151" checksum="42e42c793d570554579e563bd545a31a" order="">data/SP2613_Station3.bl</r2r:file>
+      <r2r:file id="202952139" checksum="059faf0b75ce9ce7ba7e39c96714390e" order="">data/SP2613_Station3.hdr</r2r:file>
+      <r2r:file id="202952196" checksum="dc625961d24d3c7da4ea022411bca258" order="">data/SP2613_Station3.hex</r2r:file>
+      <r2r:file id="202952134" checksum="87d24a37a1d57bef09941df58e0b549e" order="">data/SP2613_STATION3.XMLCON</r2r:file>
+      <r2r:file id="202952146" checksum="234e18cefc6e7bb3c94bfcb1599e37e8" order="">data/SP2613_Station4.bl</r2r:file>
+      <r2r:file id="202952140" checksum="eaecd48ead008fef4bb4d320854d6594" order="">data/SP2613_Station4.hdr</r2r:file>
+      <r2r:file id="202952192" checksum="6bfc5e58a33a51096502d1edc63b16a3" order="">data/SP2613_Station4.hex</r2r:file>
+      <r2r:file id="202952133" checksum="87d24a37a1d57bef09941df58e0b549e" order="">data/SP2613_STATION4.XMLCON</r2r:file>
+    </r2r:files>
+  </r2r:manifest>
+</r2r:qareport>

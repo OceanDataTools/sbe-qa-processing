@@ -1,0 +1,44 @@
+[project]
+name = "sbe-qa-processing"
+version = "0.1.0"
+description = "Quality assessment reports (PDF, Jupyter notebook, R2R QA 2.0 XML) for Sea-Bird SBE 9/911plus CTD filesets"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "seabirdscientific",
+  "gsw >= 3.6.19",
+  "matplotlib >= 3.9",
+  "nbformat >= 5.10",
+  "numpy >= 2.0",
+  "pandas >= 2.2.2",
+  "reportlab>=4.2",
+  "svglib>=1.5",
+  "cartopy>=0.24",
+  "shapely>=2.0",
+  "pyyaml>=6.0",
+]
+
+[project.scripts]
+sbe-qa-processing = "sbe_qa_processing.cli:main"
+
+[dependency-groups]
+dev = [
+  "nbclient >= 0.10",
+  "ipykernel >= 6.29",
+  "pytest >= 8.3",
+  "ruff >= 0.8",
+]
+
+[tool.uv.sources]
+# The fork's integration branch: upstream v3.0.0 plus every pending fix
+seabirdscientific = { git = "https://github.com/webbpinner/seabirdscientific", branch = "integration" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 99
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

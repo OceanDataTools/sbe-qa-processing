@@ -26,7 +26,8 @@ Use uv. Run from the repo root.
   `python scripts/fetch_r2r_fileset.py SP2613 169847`, plus the same for `RR2605 170644` and `BH18-18 132368`.
 - Natural Earth map data for offline use: `uv run python scripts/fetch_map_data.py`. The tests monkeypatch the map layers, so they don't need it.
 - Run on a fileset: `uv run sbe-qa-processing run configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--execute-notebook]`
-- Make a cruise TOML from R2R's XML: `uv run sbe-qa-processing config-from-r2r data/<...>/r2r_qa.2.0.xml`
+- Make a cruise TOML from R2R's catalog API: `uv run python scripts/fetch_r2r_config.py CRUISE FILESET [--out configs] [--force]`, which writes `<out>/<CRUISE>.toml`. It uses `config.config_from_r2r_api`. The API has no port coordinates, country or state.
+- Make a cruise TOML from an R2R QA XML: `uv run sbe-qa-processing config-from-r2r data/<...>/r2r_qa.2.0.xml`
 
 `data/` (downloaded filesets) and `output/` (generated reports) are gitignored. `configs/` holds the three validation cruises and `site.example.toml`.
 
@@ -57,7 +58,7 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(config, fileset)` is the pip
    - R2R rules that aren't documented upstream were inferred, and they're documented in the module docstring.
    - Changing them breaks parity.
 6. **`science.py`** holds the science checks (`CheckResult` with pass/warn/fail/info/n/a), with limits in `config.Thresholds`. **`loadout.py`** builds the sensor/channel tables. **`bottles.py`** parses `.bl` bottle logs.
-7. **`config.py`** handles the cruise TOML (`CruiseConfig`, `Extent`, `Thresholds`, `Port`) and `config_toml_from_r2r_qa`. **`openvdm.py`** builds a `CruiseConfig` from OpenVDM's `api/warehouse/getCruiseConfig`, GeoJSON tracklines and an optional site TOML. It also handles the hook's skip, chown and pending-checksum logic.
+7. **`config.py`** handles the cruise TOML (`CruiseConfig`, `Extent`, `Thresholds`, `Port`) `config_toml_from_r2r_qa` and `config_from_r2r_api`. R2R's XML identifies the vessel by its ICES code, which the API calls `vessel_ices_code`; the API's own `vessel_id` field holds the vessel's name. **`openvdm.py`** builds a `CruiseConfig` from OpenVDM's `api/warehouse/getCruiseConfig`, GeoJSON tracklines and an optional site TOML. It also handles the hook's skip, chown and pending-checksum logic.
 8. **Writers:**
    - `xml_report.py` writes the R2R schema with its stylesheet reference.
    - `pdf_report.py` uses ReportLab and embeds the SVGs as vectors via svglib.

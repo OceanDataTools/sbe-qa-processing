@@ -35,7 +35,10 @@ coastlines.
 
 ```bash
 # Cruise metadata R2R normally takes from its catalog: id, dates, bounding box, ...
-uv run sbe-qa-processing config-from-r2r path/to/r2r_qa.2.0.xml -o configs/MYCRUISE.toml  # or write it by hand
+# from R2R's catalog API, for a cruise and CTD fileset R2R knows:
+uv run python scripts/fetch_r2r_config.py MYCRUISE 123456   # writes configs/MYCRUISE.toml
+# or from an existing R2R QA 2.0 report (adds port coordinates), or write it by hand:
+uv run sbe-qa-processing config-from-r2r path/to/r2r_qa.2.0.xml -o configs/MYCRUISE.toml
 
 uv run sbe-qa-processing run configs/MYCRUISE.toml path/to/fileset -o output/MYCRUISE
 uv run sbe-qa-processing run configs/MYCRUISE.toml path/to/fileset -o output/MYCRUISE --execute-notebook

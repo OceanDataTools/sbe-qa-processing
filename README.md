@@ -1,5 +1,11 @@
 # sbe-qa-processing
 
+> [!WARNING]
+> **Under heavy development.** This project is shared for peer review. Its outputs, command
+> line, config format and Python API may change without notice, and its results haven't been
+> validated beyond the R2R filesets listed under [Validation against R2R](#validation-against-r2r).
+> Don't rely on it for operational QA yet. Issues and comments are welcome.
+
 Quality assessment for Sea-Bird **SBE 9/911plus** CTD filesets. From a fileset (a BagIt bag as
 R2R/NCEI distribute it, or a plain directory of Seasave output) and a small cruise config, it
 writes:
@@ -22,9 +28,22 @@ The `.XMLCON` parser lives here, since seabirdscientific doesn't have one.
 Needs [uv](https://docs.astral.sh/uv/) (`brew install uv`) and git.
 
 ```bash
+git clone https://github.com/OceanDataTools/sbe-qa-processing.git
+cd sbe-qa-processing
 uv sync
 uv run python scripts/fetch_map_data.py   # Natural Earth coastlines for the maps (~27 MB, once)
 ```
+
+seabirdscientific is installed from the `integration` branch of
+[webbpinner/seabirdscientific](https://github.com/webbpinner/seabirdscientific), not from PyPI,
+whose release lacks the fixes this tool needs. `uv sync` installs the exact commit pinned in
+`uv.lock`. `pip install git+https://github.com/OceanDataTools/sbe-qa-processing.git` also works,
+and takes the branch's latest commit.
+
+The fork is temporary. Once its fixes are released in the official
+[seabirdscientific](https://github.com/Sea-BirdScientific/seabirdscientific), this project will
+depend on that release instead. Until then, the fork's `integration` branch is rebuilt as fixes
+change, so a `pip` install can pick up a different commit from one day to the next.
 
 The maps use [cartopy](https://scitools.org.uk/cartopy/) with Natural Earth 1:10m land, lakes
 and coastlines, and a 1:110m world inset. cartopy downloads them on first use; run the fetch
@@ -184,3 +203,7 @@ with `uv pip install -e path/to/seabirdscientific` and run commands with `uv run
 - Temperature and conductivity coefficients have no slope/offset in seabirdscientific; the
   `.XMLCON` slope/offset is applied here. Digiquartz pressure slope/offset is applied by
   seabirdscientific.
+
+## License
+
+[MIT](LICENSE)

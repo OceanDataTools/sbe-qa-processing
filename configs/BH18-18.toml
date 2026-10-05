@@ -2,7 +2,7 @@
 [cruise]
 id = "BH18-18"
 name = "Animal Physiology"
-vessel_id = "Blue Heron"
+vessel_id = "33B1"  # ICES code, as R2R reports it
 vessel_name = "Blue Heron"
 operator_id = "edu.umn.d"
 scheduler_id = "org.unols"

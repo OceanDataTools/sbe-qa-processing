@@ -5,7 +5,9 @@ description = "Quality assessment reports (PDF, Jupyter notebook, R2R QA 2.0 XML
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "seabirdscientific",
+  # The fork's integration branch: upstream v3.0.0 plus every pending fix. A direct reference,
+  # so pip installs it too (pip ignores [tool.uv.sources]); PyPI's seabirdscientific is 2.x
+  "seabirdscientific @ git+https://github.com/webbpinner/seabirdscientific@integration",
   "gsw >= 3.6.19",
   "matplotlib >= 3.9",
   "nbformat >= 5.10",
@@ -29,13 +31,12 @@ dev = [
   "ruff >= 0.8",
 ]
 
-[tool.uv.sources]
-# The fork's integration branch: upstream v3.0.0 plus every pending fix
-seabirdscientific = { git = "https://github.com/webbpinner/seabirdscientific", branch = "integration" }
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.ruff]
 line-length = 99

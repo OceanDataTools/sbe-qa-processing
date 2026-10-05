@@ -231,6 +231,38 @@ def _toml_value(value) -> str:
     return str(value)
 
 
+def config_from_r2r_api(cruise: dict, fileset: dict | None = None) -> CruiseConfig:
+    """Cruise config from R2R's catalog API: a record from ``api/cruise/?cruise_id=...`` and
+    optionally one from ``api/fileset/?cruise_id=...``.
+
+    R2R's QA reports identify the vessel by its ICES code, which the API calls
+    ``vessel_ices_code`` (its ``vessel_id`` is the vessel's name). The API has no port
+    coordinates, country or state, so ports carry only their name and R2R ID.
+    """
+    value = lambda key: str(cruise.get(key) or "").strip()
+    edges = ("longitude_min", "longitude_max", "latitude_min", "latitude_max")
+    extent = None
+    if all(value(edge) for edge in edges):
+        west, east, south, north = (float(value(edge)) for edge in edges)
+        extent = Extent(westernmost=west, easternmost=east, southernmost=south, northernmost=north)
+    return CruiseConfig(
+        cruise_id=value("cruise_id"),
+        fileset_id=str(fileset["fileset_id"]) if fileset else "",
+        depart_date=_as_date(value("depart_date")),
+        arrive_date=_as_date(value("arrive_date")),
+        extent=extent,
+        cruise_name=value("cruise_name"),
+        cruise_pi=value("chief_scientist"),
+        cruise_location=value("waterbody_name"),
+        vessel_id=value("vessel_ices_code") or value("vessel_id"),
+        vessel_name=value("vessel_shortname") or value("vessel_name"),
+        operator_id=value("operator_id"),
+        scheduler_id=value("scheduler_id"),
+        depart_port=Port(name=value("depart_port_name"), port_id=value("depart_port_id")),
+        arrive_port=Port(name=value("arrive_port_name"), port_id=value("arrive_port_id")),
+    )
+
+
 def config_toml_from_r2r_qa(qa_xml: Path | str) -> str:
     """Cruise TOML text built from an existing R2R QA report's filesetinfo, for checking this
     tool's results against R2R's

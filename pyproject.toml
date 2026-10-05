@@ -3,6 +3,8 @@ name = "sbe-qa-processing"
 version = "0.1.0"
 description = "Quality assessment reports (PDF, Jupyter notebook, R2R QA 2.0 XML) for Sea-Bird SBE 9/911plus CTD filesets"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
   # The fork's integration branch: upstream v3.0.0 plus every pending fix. A direct reference,

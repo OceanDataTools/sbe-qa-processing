@@ -34,6 +34,7 @@ Use uv. Run from the repo root.
 ## seabirdscientific dependency
 
 - seabirdscientific comes from git: the `integration` branch of the fork `webbpinner/seabirdscientific`, which is upstream `v3.0.0` plus every pending fix. It's a direct reference in `[project].dependencies` (`seabirdscientific @ git+...@integration`, which needs hatch's `allow-direct-references`), not a `[tool.uv.sources]` entry, so pip installs the fork too. PyPI's seabirdscientific is 2.x and won't work. `uv.lock` pins its commit.
+- **Long-term goal:** depend on the official seabirdscientific release instead of the fork. Once a release has the fixes this tool needs, switch the dependency to a version range (e.g. `seabirdscientific >= 3.0.0`) and drop `allow-direct-references`. Keep the runtime version detection in `status.py` and the TS plot until older releases no longer matter.
 - That branch is rebuilt and force-pushed whenever a fork PR branch changes. Afterwards, run `uv lock --upgrade-package seabirdscientific`, re-run the tests, and commit `uv.lock`.
 - To try unpushed seabirdscientific changes, install a local checkout over the locked one: `uv pip install -e ../../Sea-BirdScientific/seabirdscientific`. Then use `uv run --no-sync ...`, because a plain `uv run`/`uv sync` reverts to the lock.
 - The code must keep working on plain upstream `v3.0.0` too:

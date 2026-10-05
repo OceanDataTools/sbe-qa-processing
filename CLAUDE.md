@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`sbe-qa-processing` (GitHub: `OceanDataTools/sbe-qa-processing`, private for now) runs quality assessment on Sea-Bird **SBE 9/911plus** CTD filesets. It reads a BagIt bag as R2R/NCEI distribute it, or a plain directory of Seasave output, together with a cruise TOML. It writes:
+`sbe-qa-processing` (GitHub: `OceanDataTools/sbe-qa-processing`, public, MIT License) runs quality assessment on Sea-Bird **SBE 9/911plus** CTD filesets. It reads a BagIt bag as R2R/NCEI distribute it, or a plain directory of Seasave output, together with a cruise TOML. It writes:
 - an R2R QA 2.0 XML,
 - a PDF report,
 - every figure as an SVG,

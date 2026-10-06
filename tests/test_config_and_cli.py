@@ -6,13 +6,12 @@ from conftest import FIXTURES
 from sbe_qa_processing.cli import main
 from sbe_qa_processing.config import config_from_r2r_api, config_to_toml, load_config
 
+QA_XML = str(FIXTURES / "SP2613_169847_r2r_qa.2.0.xml")
 
-def test_config_from_r2r_round_trips(tmp_path):
+
+def test_config_from_r2r_qa_round_trips(tmp_path):
     path = tmp_path / "SP2613.toml"
-    assert (
-        main(["config-from-r2r", str(FIXTURES / "SP2613_169847_r2r_qa.2.0.xml"), "-o", str(path)])
-        == 0
-    )
+    assert main(["config-from-r2r-qa", QA_XML, "-o", str(tmp_path)]) == 0
     tomllib.loads(path.read_text())
     config = load_config(path)
     assert (config.cruise_id, config.fileset_id) == ("SP2613", "169847")
@@ -47,11 +46,11 @@ R2R_FILESET = {"cruise_id": "SP2613", "fileset_id": 169847, "device_type": "ctd"
 
 
 def test_config_from_r2r_api_matches_the_qa_report(tmp_path):
-    path = tmp_path / "SP2613.toml"
+    path = tmp_path / "api.toml"
     path.write_text(config_to_toml(config_from_r2r_api(R2R_CRUISE, R2R_FILESET)))
     config = load_config(path)
-    main(["config-from-r2r", str(FIXTURES / "SP2613_169847_r2r_qa.2.0.xml"), "-o", str(path)])
-    expected = load_config(path)
+    main(["config-from-r2r-qa", QA_XML, "-o", str(tmp_path)])
+    expected = load_config(tmp_path / "SP2613.toml")
     for name in ("cruise_id", "fileset_id", "depart_date", "arrive_date", "extent"):
         assert getattr(config, name) == getattr(expected, name), name
     # The QA report names the vessel by its ICES code, the API's vessel_ices_code
@@ -68,9 +67,8 @@ def test_config_from_r2r_api_without_navigation():
 
 
 def test_thresholds_override_and_reject_unknown(tmp_path):
-    base = FIXTURES / "SP2613_169847_r2r_qa.2.0.xml"
-    path = tmp_path / "c.toml"
-    main(["config-from-r2r", str(base), "-o", str(path)])
+    path = tmp_path / "SP2613.toml"
+    main(["config-from-r2r-qa", QA_XML, "-o", str(tmp_path)])
     path.write_text(path.read_text() + "\n[thresholds]\nsalinity_range = [0.0, 42.0]\n")
     assert load_config(path).thresholds.salinity_range == (0.0, 42.0)
     path.write_text(path.read_text() + "typo_threshold = 1\n")

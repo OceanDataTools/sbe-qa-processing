@@ -18,5 +18,5 @@ def r2r_fileset(name: str) -> Path:
     path = DATA / name
     if not (path / "bagit.txt").exists():
         cruise, fileset, _ = name.split("_")
-        pytest.skip(f"run: python scripts/fetch_r2r_fileset.py {cruise} {fileset}")
+        pytest.skip(f"run: uv run sbe-qa-processing fetch-fileset {cruise} {fileset}")
     return path

@@ -97,8 +97,18 @@ directory, the CTD transfer's destination, the extra directories and the MD5 sum
    OpenVDM's venv), and fetch the map data: `uv sync && uv run python scripts/fetch_map_data.py`.
 2. In OpenVDM, add an extra directory for the reports (Configuration > Extra Directories), named
    `CTD_QA` by default, e.g. with destination `Products/CTD_QA`.
-3. Optionally copy `configs/site.example.toml` for vessel IDs, a fallback cruise extent and
-   thresholds.
+3. Write the ship's site config once, for what OpenVDM doesn't store: the vessel and its R2R
+   IDs, the report contact, the extra directories and a fallback cruise extent. It prompts for
+   each field and works offline. `--from-r2r` pre-fills the vessel, operator and scheduler from
+   any past cruise of the ship in R2R:
+
+   ```bash
+   uv run sbe-qa-processing site-config [--from-r2r RR2605]   # writes configs/site.toml
+   ```
+
+   Run it again with `--force` to change the file; its current values are the defaults. QA
+   thresholds (e.g. for fresh water) are edited by hand under `[thresholds]`.
+   `configs/site.example.toml` shows every field.
 4. Add the hook to `/opt/openvdm/server/etc/openvdm.yaml`:
 
 ```yaml
@@ -128,6 +138,21 @@ The hook:
   `build_cruise_tracks`), else from the site config; without either, the Lat/Lon test is GREY (N);
 - names reports `<cruise>_ctd_...` until an R2R fileset ID is passed with `--fileset-id`;
 - exits non-zero with a message on failure, which OpenVDM shows.
+
+To review the cruise TOML before relying on the hook, or to run the QA by hand, write it without
+running the QA:
+
+```bash
+uv run sbe-qa-processing config-from-openvdm --site-config configs/site.toml   # configs/<CRUISE>.toml
+uv run sbe-qa-processing run configs/<CRUISE>.toml /path/to/cruise/CTD -o output/<CRUISE>
+```
+
+`config-from-openvdm` takes the same OpenVDM options as the hook, plus `-o DIR` (or `-o -` for
+stdout), `--force` and `--fileset-id`. It builds the TOML the same way the hook builds its
+snapshot, and it reports what's missing or assumed: where the cruise extent came from, an
+open-ended cruise's end date (set to today), blank R2R port IDs and a missing vessel ID. The
+hook still rebuilds the TOML on every run, since OpenVDM's cruise details and tracklines change
+during a cruise.
 
 ## What it checks
 

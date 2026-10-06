@@ -1,4 +1,6 @@
-"""Command line interface: sbe-qa-processing run | openvdm | config-from-r2r"""
+"""Command line interface: sbe-qa-processing run | openvdm | config-from-r2r |
+config-from-openvdm | site-config
+"""
 
 import argparse
 import logging
@@ -52,19 +54,43 @@ def _run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_openvdm(args: argparse.Namespace):
+    """The current cruise's HookRun from OpenVDM and the site config, and OpenVDM's web root"""
+    from sbe_qa_processing import openvdm
+
+    site_root = args.site_root or openvdm.site_root_from_config(args.openvdm_config)
+    cruise_config = openvdm.fetch_cruise_config(site_root)
+    site = openvdm.load_site_config(args.site_config)
+    fileset_id = str(args.fileset_id or "")
+    return openvdm.resolve(cruise_config, site, args.transfer, fileset_id), site_root
+
+
+def _refuse_overwrite(path: Path, force: bool) -> bool:
+    if str(path) != "-" and path.exists() and not force:
+        print(f"{path} exists; use --force to overwrite it", file=sys.stderr)
+        return True
+    return False
+
+
+def _write_text(text: str, path: Path) -> None:
+    """text into path, or to stdout for -"""
+    if str(path) == "-":
+        print(text, end="")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    print(f"wrote {path}", file=sys.stderr)
+
+
 def _openvdm(args: argparse.Namespace) -> int:
     from sbe_qa_processing import openvdm
-    from sbe_qa_processing.config import config_to_toml
     from sbe_qa_processing.qa import run_qa
 
     if args.changed_files is not None and not openvdm.has_ctd_changes(args.changed_files):
         print(f"{args.transfer}: no new or updated CTD files; nothing to do")
         return 0
 
-    site_root = args.site_root or openvdm.site_root_from_config(args.openvdm_config)
-    cruise_config = openvdm.fetch_cruise_config(site_root)
-    site = openvdm.load_site_config(args.site_config)
-    run = openvdm.resolve(cruise_config, site, args.transfer, args.fileset_id or "")
+    run, site_root = _resolve_openvdm(args)
     if not run.fileset_dir.is_dir():
         print(f"{run.fileset_dir} doesn't exist yet; nothing to do")
         return 0
@@ -73,12 +99,12 @@ def _openvdm(args: argparse.Namespace) -> int:
         f"{run.config.cruise_id}: {run.fileset_dir} -> {run.output_dir} "
         f"(cruise extent from {run.extent_source})"
     )
+    for note in run.notes:
+        print(f"  note: {note}")
     run.output_dir.mkdir(parents=True, exist_ok=True)
     # Snapshot what OpenVDM supplied, so the notebook can re-run exactly this assessment
     snapshot = run.output_dir / f"{run.config.identifier}_cruise.toml"
-    snapshot.write_text(
-        f"# Resolved from OpenVDM ({site_root}) for {args.transfer}\n" + config_to_toml(run.config)
-    )
+    snapshot.write_text(openvdm.cruise_toml(run, site_root))
     result = run_qa(snapshot, run.fileset_dir)
     written = [snapshot, *_write_reports(result, run.output_dir, args.execute_notebook)]
     openvdm.chown_tree(run.output_dir, run.owner)
@@ -94,6 +120,68 @@ def _config_from_r2r(args: argparse.Namespace) -> int:
     else:
         print(text, end="")
     return 0
+
+
+def _config_from_openvdm(args: argparse.Namespace) -> int:
+    from sbe_qa_processing import openvdm
+
+    try:
+        run, site_root = _resolve_openvdm(args)
+    except openvdm.OpenVDMError as error:
+        print(f"sbe-qa-processing: {error}", file=sys.stderr)
+        return 1
+    destination = args.output
+    if str(destination) != "-":
+        destination = destination / f"{run.config.cruise_id}.toml"
+    if _refuse_overwrite(destination, args.force):
+        return 1
+    print(f"{run.config.cruise_id}: cruise extent from {run.extent_source}", file=sys.stderr)
+    for note in run.notes:
+        print(f"  note: {note}", file=sys.stderr)
+    _write_text(openvdm.cruise_toml(run, site_root), destination)
+    return 0
+
+
+def _site_config(args: argparse.Namespace) -> int:
+    from sbe_qa_processing.config import fetch_r2r_records
+    from sbe_qa_processing.openvdm import SiteConfig, load_site_config, site_config_to_toml
+    from sbe_qa_processing.site_setup import prompt_site_config, site_from_r2r
+
+    if _refuse_overwrite(args.output, args.force):
+        return 1
+    # Re-running over an existing file starts from its values
+    existing = str(args.output) != "-" and args.output.exists()
+    defaults = load_site_config(args.output) if existing else SiteConfig()
+    if args.from_r2r:
+        cruises = fetch_r2r_records("cruise", args.from_r2r)
+        if not cruises:
+            print(f"R2R has no cruise {args.from_r2r}", file=sys.stderr)
+            return 1
+        defaults = site_from_r2r(cruises[0], defaults)
+        print(f"Vessel and R2R IDs from R2R's cruise {args.from_r2r}", file=sys.stderr)
+    _write_text(site_config_to_toml(prompt_site_config(defaults)), args.output)
+    return 0
+
+
+def _add_openvdm_arguments(parser: argparse.ArgumentParser) -> None:
+    """Where to find OpenVDM and the site config, shared by the hook and config-from-openvdm"""
+    parser.add_argument(
+        "transfer",
+        nargs="?",
+        default="CTD",
+        help="collection system transfer name, e.g. {collectionSystemTransferName} (default CTD)",
+    )
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
+        "--openvdm-config",
+        type=Path,
+        default=Path("/opt/openvdm/server/etc/openvdm.yaml"),
+        help="openvdm.yaml, for OpenVDM's siteRoot (default %(default)s)",
+    )
+    source.add_argument("--site-root", help="OpenVDM's web root URL, instead of --openvdm-config")
+    parser.add_argument(
+        "--site-config", type=Path, help="optional per-ship TOML (vessel, extent, ...)"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -120,23 +208,7 @@ def main(argv: list[str] | None = None) -> int:
             "transfer's CTD files, and writes the reports into an OpenVDM extra directory."
         ),
     )
-    hook.add_argument(
-        "transfer",
-        nargs="?",
-        default="CTD",
-        help="collection system transfer name, e.g. {collectionSystemTransferName} (default CTD)",
-    )
-    source = hook.add_mutually_exclusive_group()
-    source.add_argument(
-        "--openvdm-config",
-        type=Path,
-        default=Path("/opt/openvdm/server/etc/openvdm.yaml"),
-        help="openvdm.yaml, for OpenVDM's siteRoot (default %(default)s)",
-    )
-    source.add_argument("--site-root", help="OpenVDM's web root URL, instead of --openvdm-config")
-    hook.add_argument(
-        "--site-config", type=Path, help="optional per-ship TOML (vessel, extent, ...)"
-    )
+    _add_openvdm_arguments(hook)
     hook.add_argument("--fileset-id", help="R2R fileset ID, when known")
     hook.add_argument(
         "--changed-files",
@@ -159,6 +231,55 @@ def main(argv: list[str] | None = None) -> int:
     from_r2r.add_argument("qa_xml", type=Path)
     from_r2r.add_argument("-o", "--output", type=Path, help="write here instead of stdout")
     from_r2r.set_defaults(handler=_config_from_r2r)
+
+    from_openvdm = commands.add_parser(
+        "config-from-openvdm",
+        help="make a cruise TOML from OpenVDM's current cruise, without running the QA",
+        description=(
+            "Merges OpenVDM's current cruise with the site config, as the openvdm hook does, "
+            "and writes the cruise TOML for review and `run`. Reports what's missing or assumed."
+        ),
+    )
+    _add_openvdm_arguments(from_openvdm)
+    from_openvdm.add_argument(
+        "--fileset-id", type=int, metavar="FILESET_ID", help="R2R fileset ID, when known"
+    )
+    from_openvdm.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("configs"),
+        help="directory for <CRUISE_ID>.toml, or - for stdout (default %(default)s)",
+    )
+    from_openvdm.add_argument(
+        "--force", action="store_true", help="overwrite an existing cruise TOML"
+    )
+    from_openvdm.set_defaults(handler=_config_from_openvdm)
+
+    site = commands.add_parser(
+        "site-config",
+        help="make the per-ship site TOML for the openvdm hook, by prompting for each field",
+        description=(
+            "Prompts for the per-ship settings OpenVDM doesn't store: vessel and R2R IDs, "
+            "report contact, OpenVDM extra directories and a fallback cruise bounding box. "
+            "Works offline; --from-r2r pre-fills the vessel and R2R IDs. Over an existing "
+            "file (with --force), its values are the defaults."
+        ),
+    )
+    site.add_argument(
+        "--from-r2r",
+        metavar="CRUISE_ID",
+        help="pre-fill vessel, operator and scheduler from a past cruise of the ship in R2R",
+    )
+    site.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("configs/site.toml"),
+        help="site TOML to write, or - for stdout (default %(default)s)",
+    )
+    site.add_argument("--force", action="store_true", help="overwrite an existing site TOML")
+    site.set_defaults(handler=_site_config)
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")

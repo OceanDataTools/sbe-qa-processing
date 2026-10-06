@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import threading
+import tomllib
 import xml.etree.ElementTree as ET
 from datetime import date
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -14,7 +15,7 @@ from conftest import r2r_fileset
 
 from sbe_qa_processing import openvdm
 from sbe_qa_processing.cli import main
-from sbe_qa_processing.config import R2R_NAMESPACE, Extent
+from sbe_qa_processing.config import R2R_NAMESPACE, Extent, load_config
 from sbe_qa_processing.fileset import load_fileset, md5sum
 from sbe_qa_processing.r2r import checksum_test
 
@@ -151,9 +152,15 @@ def test_md5_summary_manifest_and_pending_files(tmp_path):
 
 
 @pytest.fixture
-def openvdm_api(tmp_path):
+def api_response(tmp_path):
+    """The getCruiseConfig response openvdm_api serves; tests can change it"""
+    return cruise_config(tmp_path / "warehouse")
+
+
+@pytest.fixture
+def openvdm_api(tmp_path, api_response):
     """A stand-in OpenVDM web API serving getCruiseConfig for a cruise under tmp_path"""
-    response = cruise_config(tmp_path / "warehouse")
+    response = api_response
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -223,4 +230,54 @@ def test_hook_writes_reports_into_the_extra_directory(openvdm_api):
 def test_hook_reports_failures_to_openvdm(openvdm_api, capsys):
     site_root, _ = openvdm_api
     assert main(["openvdm", "XBT", "--site-root", site_root]) == 1
+    assert "no collection system transfer named 'XBT'" in capsys.readouterr().err
+
+
+# config-from-openvdm ---------------------------------------------------------------------------
+
+
+def test_config_from_openvdm_reports_gaps(openvdm_api, tmp_path, capsys):
+    site_root, _ = openvdm_api
+    site = tmp_path / "site.toml"
+    site.write_text('[vessel]\nid = "32QU"\nname = "Sproul"\n')
+    configs = tmp_path / "configs"
+    args = ["config-from-openvdm", "--site-root", site_root, "--site-config", str(site)]
+    assert main([*args, "--fileset-id", "169847", "-o", str(configs)]) == 0
+
+    config = load_config(configs / "SP2613.toml")
+    assert (config.cruise_id, config.fileset_id, config.vessel_id) == ("SP2613", "169847", "32QU")
+    assert (config.depart_date, config.arrive_date) == (date(2026, 7, 9), date(2026, 7, 10))
+    assert config.extent is None
+    assert config.manifest_path == tmp_path / "warehouse/SP2613/MD5_Summary.txt"
+    err = capsys.readouterr().err
+    assert "cruise extent from none" in err and "Lat/Lon test is GREY (N)" in err
+    assert "no R2R port IDs" in err and "no end date" not in err
+    # The notes are kept in the file, for whoever reviews it
+    assert "# Note: no cruise extent" in (configs / "SP2613.toml").read_text()
+
+    # The file isn't replaced without --force
+    assert main([*args, "-o", str(configs)]) == 1
+    assert "use --force" in capsys.readouterr().err
+    assert main([*args, "-o", str(configs), "--force"]) == 0
+    assert load_config(configs / "SP2613.toml").fileset_id == ""
+
+
+def test_config_from_openvdm_to_stdout(openvdm_api, api_response, tmp_path, capsys):
+    site_root, cruise_dir = openvdm_api
+    api_response |= {"cruiseEndDate": "", "cruiseStartPortID": 100055, "cruiseEndPortID": "100055"}
+    trackline(cruise_dir / "OpenVDM/Tracklines/gps.geojson", [(-117.4, 32.6), (-117.2, 32.7)])
+    assert main(["config-from-openvdm", "--site-root", site_root, "-o", "-"]) == 0
+    captured = capsys.readouterr()
+    data = tomllib.loads(captured.out)
+    assert data["cruise"]["depart_port"] == {"name": "San Diego, CA", "port_id": "100055"}
+    assert data["cruise"]["arrive_date"] == date.today()  # noqa: DTZ011 - a calendar date
+    assert data["cruise"]["extent"]["westernmost"] == -117.4
+    assert "cruise extent from tracklines" in captured.err
+    assert "no end date; arrive_date is today" in captured.err
+    assert "no R2R port IDs" not in captured.err and "no vessel ID" in captured.err
+
+
+def test_config_from_openvdm_explains_missing_configuration(openvdm_api, capsys):
+    site_root, _ = openvdm_api
+    assert main(["config-from-openvdm", "XBT", "--site-root", site_root, "-o", "-"]) == 1
     assert "no collection system transfer named 'XBT'" in capsys.readouterr().err

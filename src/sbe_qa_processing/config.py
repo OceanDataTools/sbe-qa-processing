@@ -243,6 +243,10 @@ def _toml_value(value) -> str:
     return str(value)
 
 
+class R2RError(LookupError):
+    """R2R's catalog doesn't have what was asked for"""
+
+
 def fetch_r2r_records(endpoint: str, cruise_id: str) -> list[dict]:
     """A cruise's records from R2R's catalog API (``api/cruise``, ``api/fileset``). The API
     answers "not found" with a 204 status in the body and no data
@@ -250,6 +254,26 @@ def fetch_r2r_records(endpoint: str, cruise_id: str) -> list[dict]:
     url = f"{R2R_API}/{endpoint}/?cruise_id={urllib.parse.quote(cruise_id)}"
     with urllib.request.urlopen(url, timeout=R2R_API_TIMEOUT) as response:
         return json.loads(response.read()).get("data") or []
+
+
+def config_from_r2r_catalog(cruise_id: str, fileset_id: int) -> CruiseConfig:
+    """Cruise config from R2R's catalog API, checking the CTD fileset belongs to the cruise"""
+    cruises = fetch_r2r_records("cruise", cruise_id)
+    if not cruises:
+        raise R2RError(f"R2R has no cruise {cruise_id}")
+    filesets = fetch_r2r_records("fileset", cruise_id)
+    ctd = [f for f in filesets if f.get("device_type") == "ctd"]
+    matches = [f for f in ctd if f.get("fileset_id") == fileset_id]
+    if not matches:
+        others = [f for f in filesets if f.get("fileset_id") == fileset_id]
+        problem = (
+            f"fileset {fileset_id} is {others[0].get('label')}"
+            if others
+            else f"has no fileset {fileset_id}"
+        )
+        listed = ", ".join(f"{f['fileset_id']} ({f.get('label')})" for f in ctd) or "none"
+        raise R2RError(f"{cruise_id} {problem}; its CTD filesets: {listed}")
+    return config_from_r2r_api(cruises[0], matches[0])
 
 
 def config_from_r2r_api(cruise: dict, fileset: dict | None = None) -> CruiseConfig:

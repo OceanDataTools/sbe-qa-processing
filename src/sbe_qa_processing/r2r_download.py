@@ -1,24 +1,30 @@
-"""Downloads a released R2R CTD fileset (a BagIt bag) and R2R's QA report.
+"""Downloads a released R2R CTD fileset (a BagIt bag) and R2R's QA report, for validation.
 
-Usage: python scripts/fetch_r2r_fileset.py CRUISE_ID FILESET_ID [--out data]
-
-Creates <out>/<CRUISE_ID>_<FILESET_ID>_ctd/ containing the bag (bagit.txt, manifest-md5.txt,
-data/...) and r2r_qa.2.0.xml. R2R's download URL redirects either to a .tar.gz of the bag
-(Globus) or to the bag's directory at NCEI; both are handled. Uses only the standard library.
+R2R's download URL redirects either to a .tar.gz of the bag (Globus) or to the bag's directory
+at NCEI; both are handled. The bag lands in <destination>/ (bagit.txt, manifest-md5.txt,
+data/...), with R2R's report beside it as r2r_qa.2.0.xml (or r2r_qa.xml for older filesets).
 """
 
-import argparse
 import http.cookiejar
 import io
-import json
 import re
-import sys
 import tarfile
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
+from sbe_qa_processing.config import R2RError, fetch_r2r_records
+
 R2R = "https://service.rvdata.us"
+DOWNLOAD_TIMEOUT = 120  # [s]
+
+
+@dataclass
+class Download:
+    files: int
+    bag_url: str
+    qa_report: Path | None  # None when R2R has no QA report for the fileset
 
 
 def build_opener() -> urllib.request.OpenerDirector:
@@ -29,7 +35,8 @@ def build_opener() -> urllib.request.OpenerDirector:
 
 
 def fetch(opener, url: str) -> tuple[str, bytes]:
-    with opener.open(url, timeout=120) as response:
+    """The final URL after redirects, and the body"""
+    with opener.open(url, timeout=DOWNLOAD_TIMEOUT) as response:
         return response.geturl(), response.read()
 
 
@@ -80,26 +87,19 @@ def extract_bag(archive: bytes, destination: Path) -> int:
     return count
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("cruise_id")
-    parser.add_argument("fileset_id", type=int)
-    parser.add_argument("--out", type=Path, default=Path("data"))
-    args = parser.parse_args()
+def download_fileset(cruise_id: str, fileset_id: int, destination: Path) -> Download:
+    """The fileset's bag and R2R's QA report, into destination"""
+    filesets = [
+        f for f in fetch_r2r_records("fileset", cruise_id) if f.get("fileset_id") == fileset_id
+    ]
+    if not filesets or not filesets[0].get("download_url"):
+        raise R2RError(f"{cruise_id} fileset {fileset_id} isn't released for download")
 
     opener = build_opener()
-    _, body = fetch(opener, f"{R2R}/api/fileset/?cruise_id={urllib.parse.quote(args.cruise_id)}")
-    filesets = [f for f in json.loads(body)["data"] if f["fileset_id"] == args.fileset_id]
-    if not filesets or not filesets[0].get("download_url"):
-        print(f"{args.cruise_id} fileset {args.fileset_id} isn't released for download")
-        return 1
-
-    destination = args.out / f"{args.cruise_id}_{args.fileset_id}_ctd"
     bag_url, body = fetch(opener, filesets[0]["download_url"])
     if body.lstrip().startswith(b"ERROR"):
         # R2R lists a download URL for some filesets that aren't actually online
-        print(f"{bag_url}: {body.decode(errors='replace').strip()}")
-        return 1
+        raise R2RError(f"{bag_url}: {body.decode(errors='replace').strip()}")
     # R2R and Globus serve a gzipped tar of the bag (not always with a .tar.gz URL)
     if body[:2] == b"\x1f\x8b":
         count = extract_bag(body, destination)
@@ -107,27 +107,15 @@ def main() -> int:
         bag_url = bag_url if bag_url.endswith("/") else bag_url + "/"
         count = download_tree(opener, bag_url, destination)
 
-    qa_base = f"{R2R}/data/cruise/{args.cruise_id}/fileset/{args.fileset_id}/qa/"
-    for name in (
-        f"{args.cruise_id}_{args.fileset_id}_qa.2.0.xml",
-        f"{args.cruise_id}_{args.fileset_id}_qa.xml",
-    ):
+    qa_base = f"{R2R}/data/cruise/{cruise_id}/fileset/{fileset_id}/qa/"
+    for suffix in ("qa.2.0.xml", "qa.xml"):
         try:
-            _, qa = fetch(opener, qa_base + name)
+            _, qa = fetch(opener, f"{qa_base}{cruise_id}_{fileset_id}_{suffix}")
         except OSError:
             continue
         # R2R answers missing files with 200 and an "ERROR: ..." body
         if qa.lstrip().startswith(b"<?xml"):
-            (
-                destination / name.replace(f"{args.cruise_id}_{args.fileset_id}_", "r2r_")
-            ).write_bytes(qa)
-            break
-    else:
-        print("no R2R QA report found")
-
-    print(f"{count} files from {bag_url} -> {destination}")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+            report = destination / f"r2r_{suffix}"
+            report.write_bytes(qa)
+            return Download(count, bag_url, report)
+    return Download(count, bag_url, None)

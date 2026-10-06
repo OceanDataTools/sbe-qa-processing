@@ -23,13 +23,13 @@ Use uv. Run from the repo root.
 - One test: `uv run pytest tests/test_status.py::test_name`
 - Lint and format: `uv run ruff check .` and `uv run ruff format --check .` (line length 99).
 - Fetch the R2R validation filesets into `data/`. Without them, `test_r2r_comparison.py` and parts of `test_openvdm.py` skip, and the skip message names the command:
-  `python scripts/fetch_r2r_fileset.py SP2613 169847`, plus the same for `RR2605 170644` and `BH18-18 132368`.
-- Natural Earth map data for offline use: `uv run python scripts/fetch_map_data.py`. The tests monkeypatch the map layers, so they don't need it.
-- Run on a fileset: `uv run sbe-qa-processing run configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--execute-notebook]`
-- Make a cruise TOML from R2R's catalog API: `uv run python scripts/fetch_r2r_config.py CRUISE FILESET [--out configs] [--force]`, which writes `<out>/<CRUISE>.toml`. It uses `config.config_from_r2r_api`. The API has no port coordinates, country or state.
-- Make a cruise TOML from an R2R QA XML: `uv run sbe-qa-processing config-from-r2r data/<...>/r2r_qa.2.0.xml`
+  `uv run sbe-qa-processing fetch-fileset SP2613 169847`, plus the same for `RR2605 170644` and `BH18-18 132368`.
+- Natural Earth map data for offline use: `uv run sbe-qa-processing fetch-map-data`. The tests monkeypatch the map layers, so they don't need it.
+- Run on a fileset: `uv run sbe-qa-processing run configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--force] [--execute-notebook]`
+- Make a cruise TOML from R2R's catalog API: `uv run sbe-qa-processing config-from-r2r CRUISE_ID FILESET_ID [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`. It uses `config.config_from_r2r_catalog`. The API has no port coordinates, country or state.
+- Make a cruise TOML from an R2R QA XML: `uv run sbe-qa-processing config-from-r2r-qa data/<...>/r2r_qa.2.0.xml [-o configs|-] [--force]`
 - Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [--from-r2r CRUISE] [-o configs/site.toml] [--force]`
-- Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL --site-config site.toml [--fileset-id N] [-o configs|-] [--force]`, which writes `<out>/<CRUISE>.toml`.
+- Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL --site-config site.toml [--fileset-id N] [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`.
 
 `data/` (downloaded filesets) and `output/` (generated reports) are gitignored. `configs/` holds the three validation cruises and `site.example.toml`.
 
@@ -61,14 +61,14 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(config, fileset)` is the pip
    - R2R rules that aren't documented upstream were inferred, and they're documented in the module docstring.
    - Changing them breaks parity.
 6. **`science.py`** holds the science checks (`CheckResult` with pass/warn/fail/info/n/a), with limits in `config.Thresholds`. **`loadout.py`** builds the sensor/channel tables. **`bottles.py`** parses `.bl` bottle logs.
-7. **`config.py`** handles the cruise TOML (`CruiseConfig`, `Extent`, `Thresholds`, `Port`) `config_toml_from_r2r_qa` and `config_from_r2r_api`. R2R's XML identifies the vessel by its ICES code, which the API calls `vessel_ices_code`; the API's own `vessel_id` field holds the vessel's name. **`openvdm.py`** builds a `CruiseConfig` from OpenVDM's `api/warehouse/getCruiseConfig`, GeoJSON tracklines and an optional site TOML. It also handles the hook's skip, chown and pending-checksum logic. `openvdm.resolve` and `cruise_toml` are shared by the hook's snapshot and `config-from-openvdm`, and `HookRun.notes` lists what the config is missing or assumed. **`site_setup.py`** holds `site-config`'s prompts and the `--from-r2r` pre-fill.
+7. **`config.py`** handles the cruise TOML (`CruiseConfig`, `Extent`, `Thresholds`, `Port`) `config_toml_from_r2r_qa`, `config_from_r2r_api` and `config_from_r2r_catalog`. R2R's XML identifies the vessel by its ICES code, which the API calls `vessel_ices_code`; the API's own `vessel_id` field holds the vessel's name. **`openvdm.py`** builds a `CruiseConfig` from OpenVDM's `api/warehouse/getCruiseConfig`, GeoJSON tracklines and an optional site TOML. It also handles the hook's skip, chown and pending-checksum logic. `openvdm.resolve` and `cruise_toml` are shared by the hook's snapshot and `config-from-openvdm`, and `HookRun.notes` lists what the config is missing or assumed. **`site_setup.py`** holds `site-config`'s prompts and the `--from-r2r` pre-fill.
 8. **Writers:**
    - `xml_report.py` writes the R2R schema with its stylesheet reference.
    - `pdf_report.py` uses ReportLab and embeds the SVGs as vectors via svglib.
    - `plots.py` has one matplotlib Figure per function, shared by the PDF and the notebook.
    - `maps.py` loads Natural Earth via cartopy, clipped to the view, and degrades to no coastlines when the data can't load.
    - `notebook.py` writes a notebook (nbformat) whose cells import this package.
-9. **`cli.py`** provides the `run`, `openvdm`, `config-from-r2r`, `config-from-openvdm` and `site-config` subcommands. It forces the matplotlib `Agg` backend. In `openvdm` mode, exceptions become a one-line stderr message and exit 1, because OpenVDM displays it.
+9. **`cli.py`** provides every command as a subcommand: `run`, `openvdm`, `config-from-r2r`, `config-from-r2r-qa`, `config-from-openvdm`, `site-config`, `fetch-fileset` (code in `r2r_download.py`) and `fetch-map-data`. Its module docstring states the argument conventions (`-o/--output`, `-o -`, `--force`, integer fileset IDs, uppercase metavars), and `tests/test_cli.py` checks them for every command. The `openvdm` hook's arguments are called from installed `openvdm.yaml` files, so don't rename them. It forces the matplotlib `Agg` backend. In `openvdm` mode, exceptions become a one-line stderr message and exit 1, because OpenVDM displays it.
 
 ## Conventions
 

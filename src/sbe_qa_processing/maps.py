@@ -1,8 +1,8 @@
 """Natural Earth map data for the cast map, via cartopy.
 
 cartopy downloads Natural Earth layers on first use into its data directory
-(cartopy.config["data_dir"]). At sea without internet, run scripts/fetch_map_data.py beforehand;
-if a layer still can't be loaded, the map is drawn without it.
+(cartopy.config["data_dir"]). At sea without internet, run `sbe-qa-processing fetch-map-data`
+beforehand; if a layer still can't be loaded, the map is drawn without it.
 
 Natural Earth geometries are large (a land polygon can be a whole continent), so they are clipped
 to the map view before plotting; otherwise every SVG would carry entire coastlines.

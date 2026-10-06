@@ -7,7 +7,7 @@ __pycache__/
 dist/
 build/
 *.egg-info/
-# Downloaded R2R filesets (fetch with scripts/fetch_r2r_fileset.py)
+# Downloaded R2R filesets (fetch with `sbe-qa-processing fetch-fileset`)
 data/
 # Generated reports
 output/

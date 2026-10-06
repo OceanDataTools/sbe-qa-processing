@@ -31,7 +31,7 @@ Needs [uv](https://docs.astral.sh/uv/) (`brew install uv`) and git.
 git clone https://github.com/OceanDataTools/sbe-qa-processing.git
 cd sbe-qa-processing
 uv sync
-uv run python scripts/fetch_map_data.py   # Natural Earth coastlines for the maps (~27 MB, once)
+uv run sbe-qa-processing fetch-map-data   # Natural Earth coastlines for the maps (~27 MB, once)
 ```
 
 seabirdscientific is installed from the `integration` branch of
@@ -46,8 +46,8 @@ depend on that release instead. Until then, the fork's `integration` branch is r
 change, so a `pip` install can pick up a different commit from one day to the next.
 
 The maps use [cartopy](https://scitools.org.uk/cartopy/) with Natural Earth 1:10m land, lakes
-and coastlines, and a 1:110m world inset. cartopy downloads them on first use; run the fetch
-script beforehand to work offline (e.g. at sea). Without the data, maps are drawn without
+and coastlines, and a 1:110m world inset. cartopy downloads them on first use; run `fetch-map-data`
+beforehand to work offline (e.g. at sea). Without the data, maps are drawn without
 coastlines.
 
 ## Usage
@@ -55,13 +55,21 @@ coastlines.
 ```bash
 # Cruise metadata R2R normally takes from its catalog: id, dates, bounding box, ...
 # from R2R's catalog API, for a cruise and CTD fileset R2R knows:
-uv run python scripts/fetch_r2r_config.py MYCRUISE 123456   # writes configs/MYCRUISE.toml
+uv run sbe-qa-processing config-from-r2r MYCRUISE 123456   # writes configs/MYCRUISE.toml
 # or from an existing R2R QA 2.0 report (adds port coordinates), or write it by hand:
-uv run sbe-qa-processing config-from-r2r path/to/r2r_qa.2.0.xml -o configs/MYCRUISE.toml
+uv run sbe-qa-processing config-from-r2r-qa path/to/r2r_qa.2.0.xml   # configs/MYCRUISE.toml
 
 uv run sbe-qa-processing run configs/MYCRUISE.toml path/to/fileset -o output/MYCRUISE
 uv run sbe-qa-processing run configs/MYCRUISE.toml path/to/fileset -o output/MYCRUISE --execute-notebook
 ```
+
+Every command is listed by `sbe-qa-processing --help`, and documents its arguments under
+`sbe-qa-processing COMMAND --help`. They share these conventions:
+- `-o/--output` is a directory; only `site-config` writes a single file. Commands that make a
+  cruise TOML write `<OUTPUT_DIR>/<CRUISE_ID>.toml` (default `configs/`), or to stdout with
+  `-o -`.
+- Existing outputs, reports included, aren't overwritten without `--force`. The exception is
+  the `openvdm` hook, which replaces its reports after each transfer.
 
 A cruise config (see `src/sbe_qa_processing/config.py` for every field):
 
@@ -94,7 +102,7 @@ salinity_range = [0.0, 42.0]
 directory, the CTD transfer's destination, the extra directories and the MD5 summary.
 
 1. Install this project somewhere OpenVDM's worker can run it (it has its own environment, not
-   OpenVDM's venv), and fetch the map data: `uv sync && uv run python scripts/fetch_map_data.py`.
+   OpenVDM's venv), and fetch the map data: `uv sync && uv run sbe-qa-processing fetch-map-data`.
 2. In OpenVDM, add an extra directory for the reports (Configuration > Extra Directories), named
    `CTD_QA` by default, e.g. with destination `Products/CTD_QA`.
 3. Write the ship's site config once, for what OpenVDM doesn't store: the vessel and its R2R
@@ -192,9 +200,9 @@ reports:
 Fetch them with:
 
 ```bash
-python scripts/fetch_r2r_fileset.py SP2613 169847
-python scripts/fetch_r2r_fileset.py RR2605 170644
-python scripts/fetch_r2r_fileset.py BH18-18 132368
+uv run sbe-qa-processing fetch-fileset SP2613 169847   # into data/SP2613_169847_ctd/
+uv run sbe-qa-processing fetch-fileset RR2605 170644
+uv run sbe-qa-processing fetch-fileset BH18-18 132368
 uv run pytest
 ```
 

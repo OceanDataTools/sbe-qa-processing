@@ -23,7 +23,17 @@ from pathlib import Path
 
 import yaml
 
-from sbe_qa_processing.config import CruiseConfig, Extent, Port, Thresholds, _thresholds
+from sbe_qa_processing.config import (
+    CruiseConfig,
+    Extent,
+    Port,
+    Thresholds,
+    _thresholds,
+    _toml_value,
+    config_to_toml,
+    fields_of,
+    thresholds_toml,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +71,9 @@ class SiteConfig:
 
     [provenance]
     distro_type = "post-cruise"
+    contact_institution = "Scripps Institution of Oceanography"
+    contact_institution_id = "edu.ucsd.sio"
+    contact_email = "ship-tech@example.org"
 
     [thresholds]              # as in the cruise TOML
     """
@@ -105,6 +118,54 @@ def load_site_config(path: Path | str | None) -> SiteConfig:
         contact_email=provenance.get("contact_email", ""),
         thresholds=_thresholds(data.get("thresholds", {})),
     )
+
+
+def site_config_to_toml(site: SiteConfig) -> str:
+    """The site config as TOML that load_site_config reads back. Blank fields are written
+    commented out, so the file shows everything that can be set
+    """
+
+    def entry(key: str, value, comment: str = "") -> str:
+        line = f"{key} = {_toml_value(value)}" if value else f'# {key} = ""'
+        return f"{line:<40} # {comment}" if comment else line
+
+    lines = [
+        "# Per-ship settings for the OpenVDM hook (sbe-qa-processing openvdm --site-config ...).",
+        "# OpenVDM supplies the cruise ID, name, PI, location, dates and ports.",
+        "",
+        "[vessel]",
+        entry("id", site.vessel_id, "R2R vessel ID (ICES code)"),
+        entry("name", site.vessel_name),
+        "",
+        "[cruise]                                 # R2R catalog IDs",
+        entry("operator_id", site.operator_id),
+        entry("scheduler_id", site.scheduler_id),
+        "",
+        "# Cruise bounding box for the NAV tests, used when OpenVDM has no tracklines",
+        "# (build_cruise_tracks output in the tracklines extra directory)",
+    ]
+    edges = fields_of(Extent)
+    if site.extent:
+        lines += ["[extent]"] + [f"{k} = {getattr(site.extent, k)}" for k in edges]
+    else:
+        lines += ["# [extent]"] + [f"# {k} = 0.0" for k in edges]
+    lines += [
+        "",
+        "[openvdm]",
+        entry("output_extra_directory", site.output_extra_directory, "where reports go"),
+        entry("tracklines_extra_directory", site.tracklines_extra_directory, "GeoJSON tracklines"),
+        "",
+        "[provenance]",
+        entry("distro_type", site.distro_type),
+        entry("contact_institution", site.contact_institution),
+        entry("contact_institution_id", site.contact_institution_id, "R2R organization ID"),
+        entry("contact_email", site.contact_email),
+    ]
+    thresholds = thresholds_toml(site.thresholds)
+    if not thresholds:
+        thresholds = ["", "# QA thresholds, as in a cruise TOML; e.g. for fresh water:"]
+        thresholds += ["# [thresholds]", "# salinity_range = [0.0, 42.0]"]
+    return "\n".join(lines + thresholds) + "\n"
 
 
 def site_root_from_config(openvdm_config: Path | str) -> str:
@@ -178,10 +239,13 @@ def _translate(path: str, cruise_id: str) -> str:
 @dataclass
 class HookRun:
     config: CruiseConfig
+    transfer: str
     fileset_dir: Path
     output_dir: Path
     owner: str  # the warehouse user, for file ownership
     extent_source: str  # "tracklines", "site config" or "none"
+    # What the config is missing, or had to assume
+    notes: list[str] = field(default_factory=list)
 
 
 def resolve(
@@ -208,6 +272,7 @@ def resolve(
         )
     output_dir = cruise_dir / _translate(output["destDir"], cruise_id)
 
+    notes = []
     extent, extent_source = None, "none"
     tracks = extras.get(site.tracklines_extra_directory)
     if tracks is not None:
@@ -215,17 +280,42 @@ def resolve(
         extent_source = "tracklines" if extent else "none"
     if extent is None and site.extent is not None:
         extent, extent_source = site.extent, "site config"
+        notes.append("no OpenVDM tracklines yet; the cruise extent is the site config's [extent]")
+    elif extent is None:
+        notes.append(
+            "no cruise extent: no OpenVDM tracklines and no [extent] in the site config, "
+            "so the Lat/Lon test is GREY (N)"
+        )
 
     md5_summary = warehouse.get("md5SummaryFn")
     depart = parse_openvdm_date(cruise_config.get("cruiseStartDate"))
     arrive = parse_openvdm_date(cruise_config.get("cruiseEndDate"))
     if depart is None:
         raise OpenVDMError("OpenVDM's cruise has no start date")
+    if arrive is None:
+        # an open-ended cruise is still under way
+        arrive = date.today()  # noqa: DTZ011 - a calendar date
+        notes.append(
+            f"OpenVDM's cruise has no end date; arrive_date is today ({arrive}), so casts after "
+            "today fail the date test unless the cruise TOML is updated"
+        )
+    # Port R2R IDs, once OpenVDM stores them (OceanDataTools/openvdm#364)
+    depart_port = Port(
+        name=cruise_config.get("cruiseStartPort") or "",
+        port_id=str(cruise_config.get("cruiseStartPortID") or ""),
+    )
+    arrive_port = Port(
+        name=cruise_config.get("cruiseEndPort") or "",
+        port_id=str(cruise_config.get("cruiseEndPortID") or ""),
+    )
+    if not (depart_port.port_id and arrive_port.port_id):
+        notes.append("OpenVDM has no R2R port IDs, so the XML's port IDs are blank")
+    if not site.vessel_id:
+        notes.append("no vessel ID: set [vessel] id in the site config")
     config = CruiseConfig(
         cruise_id=cruise_id,
         depart_date=depart,
-        # an open-ended cruise is still under way
-        arrive_date=arrive or date.today(),  # noqa: DTZ011 - a calendar date
+        arrive_date=arrive,
         extent=extent,
         fileset_id=fileset_id,
         cruise_name=cruise_config.get("cruiseName") or "",
@@ -235,8 +325,8 @@ def resolve(
         vessel_name=site.vessel_name,
         operator_id=site.operator_id,
         scheduler_id=site.scheduler_id,
-        depart_port=Port(name=cruise_config.get("cruiseStartPort") or ""),
-        arrive_port=Port(name=cruise_config.get("cruiseEndPort") or ""),
+        depart_port=depart_port,
+        arrive_port=arrive_port,
         distro_type=site.distro_type,
         contact_institution=site.contact_institution,
         contact_institution_id=site.contact_institution_id,
@@ -246,11 +336,20 @@ def resolve(
     )
     return HookRun(
         config=config,
+        transfer=transfer_name,
         fileset_dir=fileset_dir,
         output_dir=output_dir,
         owner=warehouse.get("shipboardDataWarehouseUsername") or "",
         extent_source=extent_source,
+        notes=notes,
     )
+
+
+def cruise_toml(run: HookRun, site_root: str) -> str:
+    """The resolved cruise TOML, headed by where it came from and what it's missing"""
+    header = [f"# Resolved from OpenVDM ({site_root}) for {run.transfer}"]
+    header += [f"# Note: {note}" for note in run.notes]
+    return "\n".join(header) + "\n" + config_to_toml(run.config)
 
 
 def has_ctd_changes(changed: list[str]) -> bool:

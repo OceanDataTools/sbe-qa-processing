@@ -1,5 +1,6 @@
 # Per-ship settings for the OpenVDM hook (sbe-qa-processing openvdm --site-config ...).
 # Everything is optional; OpenVDM supplies the cruise ID, name, PI, location, dates and ports.
+# `sbe-qa-processing site-config` writes this file by prompting for each field.
 
 [vessel]
 id = "33RR"          # R2R vessel ID
@@ -24,6 +25,7 @@ tracklines_extra_directory = "Tracklines" # GeoJSON tracklines for the cruise ex
 [provenance]
 distro_type = "post-cruise"
 # contact_institution = "Scripps Institution of Oceanography"
+# contact_institution_id = "edu.ucsd.sio"   # R2R organization ID
 # contact_email = "ship-tech@example.org"
 
 # QA thresholds, as in a cruise TOML; e.g. for fresh water:

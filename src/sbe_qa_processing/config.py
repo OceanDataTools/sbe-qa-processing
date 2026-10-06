@@ -24,13 +24,18 @@ A cruise TOML looks like::
     temperature_difference = 0.01
 """
 
+import json
 import tomllib
+import urllib.parse
+import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field, fields
 from datetime import date, datetime
 from pathlib import Path
 
 R2R_NAMESPACE = "https://service.rvdata.us/schema/r2r-2.0"
+R2R_API = "https://service.rvdata.us/api"
+R2R_API_TIMEOUT = 60  # [s]
 
 
 @dataclass
@@ -206,18 +211,25 @@ def config_to_toml(config: CruiseConfig) -> str:
         if getattr(config, k)
     }
     lines += ["", "[provenance]"] + [f"{k} = {_toml_value(v)}" for k, v in provenance.items()]
+    lines += thresholds_toml(config.thresholds)
+    return "\n".join(lines) + "\n"
+
+
+def thresholds_toml(thresholds: Thresholds) -> list[str]:
+    """A [thresholds] table of the values that differ from the defaults, or nothing"""
     defaults = Thresholds()
     changed = {
-        f.name: getattr(config.thresholds, f.name)
+        f.name: getattr(thresholds, f.name)
         for f in fields(Thresholds)
-        if getattr(config.thresholds, f.name) != getattr(defaults, f.name)
+        if getattr(thresholds, f.name) != getattr(defaults, f.name)
     }
-    if changed:
-        lines += ["", "[thresholds]"]
-        for key, value in changed.items():
-            value = list(value) if isinstance(value, tuple) else value
-            lines.append(f"{key} = {value}")
-    return "\n".join(lines) + "\n"
+    if not changed:
+        return []
+    lines = ["", "[thresholds]"]
+    for key, value in changed.items():
+        value = list(value) if isinstance(value, tuple) else value
+        lines.append(f"{key} = {value}")
+    return lines
 
 
 def fields_of(cls) -> list[str]:
@@ -229,6 +241,15 @@ def _toml_value(value) -> str:
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
     return str(value)
+
+
+def fetch_r2r_records(endpoint: str, cruise_id: str) -> list[dict]:
+    """A cruise's records from R2R's catalog API (``api/cruise``, ``api/fileset``). The API
+    answers "not found" with a 204 status in the body and no data
+    """
+    url = f"{R2R_API}/{endpoint}/?cruise_id={urllib.parse.quote(cruise_id)}"
+    with urllib.request.urlopen(url, timeout=R2R_API_TIMEOUT) as response:
+        return json.loads(response.read()).get("data") or []
 
 
 def config_from_r2r_api(cruise: dict, fileset: dict | None = None) -> CruiseConfig:

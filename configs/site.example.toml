@@ -1,5 +1,7 @@
 # Per-ship settings for the OpenVDM hook (sbe-qa-processing openvdm --site-config ...).
 # Everything is optional; OpenVDM supplies the cruise ID, name, PI, location, dates and ports.
+# From OpenVDM 2.17, openvdm.yaml's vessel block supplies the vessel name, contact and R2R
+# vessel, operator and scheduler IDs, and wins over the same fields here.
 # `sbe-qa-processing site-config` writes this file by prompting for each field.
 
 [vessel]
@@ -10,8 +12,9 @@ name = "Roger Revelle"
 operator_id = "edu.ucsd.sio"
 scheduler_id = "org.unols"
 
-# Cruise bounding box for the NAV tests, used when OpenVDM has no tracklines
-# (build_cruise_tracks output in the Tracklines extra directory)
+# Cruise bounding box for the NAV tests, used when OpenVDM has no cruise extent
+# (OpenVDM 2.17's cruiseExtent, set by build_cruise_tracks.py). westernmost >
+# easternmost is a box across the antimeridian
 # [extent]
 # westernmost = -125.0
 # easternmost = -115.0
@@ -20,12 +23,11 @@ scheduler_id = "org.unols"
 
 [openvdm]
 output_extra_directory = "CTD_QA"         # where the reports are written
-tracklines_extra_directory = "Tracklines" # GeoJSON tracklines for the cruise extent
 
 [provenance]
 distro_type = "post-cruise"
 # contact_institution = "Scripps Institution of Oceanography"
-# contact_institution_id = "edu.ucsd.sio"   # R2R organization ID
+# contact_institution_id = "edu.ucsd.sio"   # R2R organization ID; default: the operator ID
 # contact_email = "ship-tech@example.org"
 
 # QA thresholds, as in a cruise TOML; e.g. for fresh water:

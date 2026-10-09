@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import subprocess
 import threading
 import tomllib
 import xml.etree.ElementTree as ET
@@ -256,6 +257,103 @@ def test_md5_summary_manifest_and_pending_files(tmp_path):
     assert (result.passed, result.total) == (1, 2)
 
 
+# Adding the reports to OpenVDM's MD5 summary ---------------------------------------------------
+
+
+def openvdm_install(root: Path) -> Path:
+    """A stand-in OpenVDM install with the MD5 summary script, as from OpenVDM 2.16.1"""
+    for path in ("venv/bin/python", "utils/update_md5_summary.py", "server/etc/openvdm.yaml"):
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text("")
+    return root
+
+
+class FakeRun:
+    """subprocess.run standing in for OpenVDM's script; records the commands"""
+
+    def __init__(self, returncode=0, stderr="", error=None):
+        self.commands, self.returncode, self.stderr, self.error = [], returncode, stderr, error
+
+    def __call__(self, command, **kwargs):
+        self.commands.append(command)
+        if self.error:
+            raise self.error
+        return subprocess.CompletedProcess(command, self.returncode, "", self.stderr)
+
+
+def written_reports(tmp_path):
+    """A HookRun for SP2613 and report files in its output directory"""
+    run = openvdm.resolve(cruise_config(tmp_path), openvdm.SiteConfig(), "CTD")
+    plots = run.output_dir / "SP2613_ctd_plots"
+    plots.mkdir(parents=True)
+    for name in ("cast_map.svg", "station1_ts.svg"):
+        (plots / name).write_text("<svg/>")
+    pdf = run.output_dir / "SP2613_ctd_qa_report.pdf"
+    pdf.write_text("%PDF")
+    return run, [pdf, plots]
+
+
+def test_openvdm_install_dir():
+    assert openvdm.openvdm_install_dir("/srv/openvdm/server/etc/openvdm.yaml") == Path(
+        "/srv/openvdm"
+    )
+
+
+def test_queue_md5_update(tmp_path, monkeypatch):
+    install = openvdm_install(tmp_path / "openvdm")
+    run, written = written_reports(tmp_path / "warehouse")
+    fake = FakeRun()
+    monkeypatch.setattr(openvdm.subprocess, "run", fake)
+    assert openvdm.queue_md5_update(install, run, written) is None
+    # Every file, the plots directory's too, relative to the cruise directory
+    assert fake.commands == [
+        [
+            str(install / "venv/bin/python"),
+            str(install / "utils/update_md5_summary.py"),
+            "--cruiseID",
+            "SP2613",
+            "Products/CTD_QA/SP2613_ctd_plots/cast_map.svg",
+            "Products/CTD_QA/SP2613_ctd_plots/station1_ts.svg",
+            "Products/CTD_QA/SP2613_ctd_qa_report.pdf",
+        ]
+    ]
+
+
+@pytest.mark.parametrize(
+    "fake, expected",
+    [
+        (
+            FakeRun(1, "Traceback ...\nUnable to queue the MD5 summary update: no Gearman\n"),
+            "exited 1: Unable to queue the MD5 summary update: no Gearman",
+        ),
+        (FakeRun(error=OSError("Permission denied")), "couldn't run"),
+        (FakeRun(error=subprocess.TimeoutExpired("python", 120)), "timed out"),
+    ],
+)
+def test_queue_md5_update_failures(tmp_path, monkeypatch, fake, expected):
+    install = openvdm_install(tmp_path / "openvdm")
+    run, written = written_reports(tmp_path / "warehouse")
+    monkeypatch.setattr(openvdm.subprocess, "run", fake)
+    assert expected in openvdm.queue_md5_update(install, run, written)
+
+
+def test_queue_md5_update_without_the_script(tmp_path, monkeypatch):
+    # OpenVDM before 2.16.1
+    run, written = written_reports(tmp_path / "warehouse")
+    monkeypatch.setattr(openvdm.subprocess, "run", FakeRun())
+    problem = openvdm.queue_md5_update(tmp_path / "openvdm", run, written)
+    assert "update_md5_summary.py" in problem and "OpenVDM 2.16.1" in problem
+
+
+def test_queue_md5_update_outside_the_cruise(tmp_path, monkeypatch):
+    install = openvdm_install(tmp_path / "openvdm")
+    run, _ = written_reports(tmp_path / "warehouse")
+    elsewhere = tmp_path / "elsewhere.pdf"
+    elsewhere.write_text("%PDF")
+    monkeypatch.setattr(openvdm.subprocess, "run", FakeRun())
+    assert "outside the cruise directory" in openvdm.queue_md5_update(install, run, [elsewhere])
+
+
 # The hook end to end ---------------------------------------------------------------------------
 
 
@@ -290,8 +388,17 @@ def openvdm_api(tmp_path, api_response):
     server.shutdown()
 
 
-def test_hook_writes_reports_into_the_extra_directory(openvdm_api, api_response):
+def test_hook_writes_reports_into_the_extra_directory(
+    openvdm_api, api_response, tmp_path, monkeypatch, caplog
+):
     site_root, cruise_dir = openvdm_api
+    # With --site-root, OpenVDM's MD5 script is looked for in the default install
+    install = openvdm_install(tmp_path / "openvdm")
+    monkeypatch.setattr(
+        "sbe_qa_processing.cli.DEFAULT_OPENVDM_CONFIG", install / "server/etc/openvdm.yaml"
+    )
+    md5_update = FakeRun(1, "Unable to queue the MD5 summary update: no Gearman")
+    monkeypatch.setattr(openvdm.subprocess, "run", md5_update)
     source = r2r_fileset("SP2613_169847_ctd") / "data"
     ctd = cruise_dir / "CTD"
     ctd.mkdir(parents=True)
@@ -330,6 +437,17 @@ def test_hook_writes_reports_into_the_extra_directory(openvdm_api, api_response)
     # The notebook re-runs from the snapshot of what OpenVDM supplied
     notebook = (output / "SP2613_ctd_qa.ipynb").read_text()
     assert "SP2613_ctd_cruise.toml" in notebook
+
+    # Every report goes to OpenVDM's MD5 summary; a failure to queue that doesn't fail the hook
+    (command,) = md5_update.commands
+    assert command[2:4] == ["--cruiseID", "SP2613"]
+    queued = set(command[4:])
+    assert {
+        "Products/CTD_QA/SP2613_ctd_cruise.toml",
+        "Products/CTD_QA/SP2613_ctd_qa.ipynb",
+    } < queued
+    assert len([f for f in queued if f.endswith(".svg")]) == 13
+    assert "the reports aren't in OpenVDM's MD5 summary" in caplog.text
 
 
 def test_hook_reports_failures_to_openvdm(openvdm_api, capsys):

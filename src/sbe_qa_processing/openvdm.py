@@ -180,8 +180,15 @@ def site_config_to_toml(site: SiteConfig) -> str:
 
 
 def load_openvdm_yaml(openvdm_config: Path | str) -> dict:
-    with open(openvdm_config) as file:
-        return yaml.safe_load(file) or {}
+    try:
+        with open(openvdm_config) as file:
+            return yaml.safe_load(file) or {}
+    except FileNotFoundError:
+        # e.g. OpenVDM installed outside /opt (its installer's INSTALL_ROOT)
+        raise OpenVDMError(
+            f"no openvdm.yaml at {openvdm_config}: give its path with --openvdm-config, or "
+            "OpenVDM's web root URL with --site-root"
+        ) from None
 
 
 def site_root_from_config(openvdm_config: Path | str | dict) -> str:

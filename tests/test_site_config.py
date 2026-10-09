@@ -182,6 +182,7 @@ def test_settings_in_openvdm_yaml_are_not_asked_for(tmp_path, monkeypatch, capsy
     prompts = capsys.readouterr().err
     assert "vessel_id = 33RR" in prompts and "R2R vessel ID" not in prompts
     assert "Contact email" in prompts
+    assert "No openvdm.yaml" not in prompts
 
 
 def test_openvdm_yaml_without_a_vessel_block(tmp_path, monkeypatch, capsys):
@@ -193,3 +194,24 @@ def test_openvdm_yaml_without_a_vessel_block(tmp_path, monkeypatch, capsys):
     assert main(["site-config", "--openvdm-config", str(openvdm_yaml), "-o", str(output)]) == 0
     assert load_site_config(output).vessel_id == "33RR"
     assert "aren't asked for" not in capsys.readouterr().err
+
+
+def test_says_when_openvdm_yaml_is_not_at_the_default_path(tmp_path, monkeypatch, capsys):
+    # e.g. OpenVDM installed outside /opt, or the site TOML written away from the server
+    answer(monkeypatch, "33RR")
+    output = tmp_path / "site.toml"
+    assert main(["site-config", "-o", str(output)]) == 0
+    prompts = capsys.readouterr().err
+    assert f"No openvdm.yaml at {tmp_path / 'missing.yaml'}" in prompts
+    assert "use --openvdm-config" in prompts
+    assert "R2R vessel ID" in prompts  # every field is asked for
+    assert load_site_config(output).vessel_id == "33RR"
+
+
+def test_missing_openvdm_config_is_an_error(tmp_path, capsys):
+    missing = tmp_path / "elsewhere" / "openvdm.yaml"
+    output = tmp_path / "site.toml"
+    assert main(["site-config", "--openvdm-config", str(missing), "-o", str(output)]) == 1
+    err = capsys.readouterr().err
+    assert f"no openvdm.yaml at {missing}" in err and "--site-root" not in err
+    assert not output.exists()

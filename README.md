@@ -121,11 +121,16 @@ With `--site-root` instead of `--openvdm-config`, they come from the copy in the
    uv run sbe-qa-processing site-config [--from-r2r RR2605]   # writes configs/site.toml
    ```
 
+   It reads `openvdm.yaml` from `/opt/openvdm/server/etc/`. If OpenVDM is installed elsewhere
+   (the installer's `INSTALL_ROOT`), pass `--openvdm-config <INSTALL_ROOT>/openvdm/server/etc/openvdm.yaml`.
+
    Run it again with `--force` to change the file; its current values are the defaults. QA
    thresholds (e.g. for fresh water) are edited by hand under `[thresholds]`.
    `configs/site.example.toml` shows every field. The contact institution's R2R ID defaults to
    the operator ID, since on board the report comes from the ship's operator.
-4. Add the hook to `/opt/openvdm/server/etc/openvdm.yaml`:
+4. Add the hook to OpenVDM's `openvdm.yaml`, `/opt/openvdm/server/etc/openvdm.yaml` by default.
+   `--openvdm-config` tells the hook where that file is, since OpenVDM may be installed outside
+   `/opt`:
 
 ```yaml
 postHookCommands:
@@ -137,6 +142,7 @@ postHookCommands:
             - /opt/sbe-qa-processing/.venv/bin/sbe-qa-processing
             - openvdm
             - "{collectionSystemTransferName}"
+            - "--openvdm-config=/opt/openvdm/server/etc/openvdm.yaml"  # <INSTALL_ROOT>/openvdm/...
             - "--site-config=/opt/sbe-qa-processing/configs/site.toml"
             - "--changed-files={newFiles}"
             - "--changed-files={updatedFiles}"
@@ -163,7 +169,8 @@ To review the cruise TOML before relying on the hook, or to run the QA by hand, 
 running the QA:
 
 ```bash
-uv run sbe-qa-processing config-from-openvdm --site-config configs/site.toml   # configs/<CRUISE>.toml
+uv run sbe-qa-processing config-from-openvdm --site-config configs/site.toml \
+    --openvdm-config /opt/openvdm/server/etc/openvdm.yaml                      # configs/<CRUISE>.toml
 uv run sbe-qa-processing run configs/<CRUISE>.toml /path/to/cruise/CTD -o output/<CRUISE>
 ```
 

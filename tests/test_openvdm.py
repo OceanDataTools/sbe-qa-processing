@@ -408,3 +408,13 @@ def test_config_from_openvdm_with_openvdm_yaml(openvdm_api, tmp_path, capsys):
     captured = capsys.readouterr()
     assert tomllib.loads(captured.out)["cruise"]["vessel_id"] == "32ST"
     assert "vessel settings from ovdmConfig.json" in captured.err
+
+
+def test_openvdm_yaml_not_found(tmp_path, capsys):
+    # OpenVDM installed outside /opt, without --openvdm-config in the hook
+    missing = tmp_path / "openvdm.yaml"
+    assert main(["openvdm", "--openvdm-config", str(missing)]) == 1
+    err = capsys.readouterr().err
+    assert f"no openvdm.yaml at {missing}" in err and "--site-root" in err
+    assert main(["config-from-openvdm", "--openvdm-config", str(missing), "-o", "-"]) == 1
+    assert "give its path with --openvdm-config" in capsys.readouterr().err

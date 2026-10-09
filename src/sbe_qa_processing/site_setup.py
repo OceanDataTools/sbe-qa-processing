@@ -78,8 +78,9 @@ def _degrees(limit: float, required: bool = False) -> Callable[[str], str | None
 
 def _ask_extent(prompt: Prompter, default: Extent | None) -> Extent | None:
     prompt.say(
-        "\nFallback cruise bounding box, used when OpenVDM has no tracklines. "
-        "Leave westernmost blank to skip."
+        "\nFallback cruise bounding box, used when OpenVDM has no cruise extent. "
+        "Leave westernmost blank to skip. westernmost > easternmost is a box across the "
+        "antimeridian (180°)."
     )
     while True:
         text = lambda edge: str(getattr(default, edge)) if default else ""
@@ -96,37 +97,53 @@ def _ask_extent(prompt: Prompter, default: Extent | None) -> Extent | None:
             if not values[edge]:  # input ended part way through
                 return default
         extent = Extent(**{k: float(v) for k, v in values.items()})
-        if extent.westernmost <= extent.easternmost and extent.southernmost <= extent.northernmost:
+        if extent.southernmost <= extent.northernmost:
+            if extent.crosses_antimeridian:
+                prompt.say("  westernmost > easternmost: a box across the antimeridian")
             return extent
-        prompt.say("  westernmost must be <= easternmost, southernmost <= northernmost; try again")
+        prompt.say("  southernmost must be <= northernmost; try again")
         if prompt.ended:
             return default
 
 
-def prompt_site_config(defaults: SiteConfig, prompt: Prompter | None = None) -> SiteConfig:
-    """A site config from answers to prompts, starting from defaults"""
+def prompt_site_config(
+    defaults: SiteConfig, prompt: Prompter | None = None, from_openvdm: dict | None = None
+) -> SiteConfig:
+    """A site config from answers to prompts, starting from defaults. Fields in from_openvdm
+    (openvdm.yaml's vessel settings, by SiteConfig field) win over the site config, so they
+    aren't asked for and keep their defaults
+    """
     prompt = prompt or Prompter()
+    from_openvdm = from_openvdm or {}
     prompt.say(f"Enter keeps the [default]; {CLEAR} clears it.\n")
-    ask = prompt.ask
+    if from_openvdm:
+        prompt.say(
+            "openvdm.yaml's vessel block has these, and the hook uses them ahead of the site "
+            "config, so they aren't asked for:"
+        )
+        for name, value in from_openvdm.items():
+            prompt.say(f"  {name} = {value}")
+        prompt.say("")
+
+    def ask(field_name: str, label: str, check=None) -> str:
+        default = getattr(defaults, field_name)
+        return default if field_name in from_openvdm else prompt.ask(label, default, check)
+
     site = replace(
         defaults,
-        vessel_id=ask("R2R vessel ID (ICES code, e.g. 33RR)", defaults.vessel_id),
-        vessel_name=ask("Vessel name (e.g. Roger Revelle)", defaults.vessel_name),
-        operator_id=ask("R2R operator ID (e.g. edu.ucsd.sio)", defaults.operator_id),
-        scheduler_id=ask("R2R scheduler ID (e.g. org.unols)", defaults.scheduler_id),
-        contact_institution=ask(
-            "Contact institution for the QA report", defaults.contact_institution
-        ),
+        vessel_id=ask("vessel_id", "R2R vessel ID (ICES code, e.g. 33RR)"),
+        vessel_name=ask("vessel_name", "Vessel name (e.g. Roger Revelle)"),
+        operator_id=ask("operator_id", "R2R operator ID (e.g. edu.ucsd.sio)"),
+        scheduler_id=ask("scheduler_id", "R2R scheduler ID (e.g. org.unols)"),
+        contact_institution=ask("contact_institution", "Contact institution for the QA report"),
         contact_institution_id=ask(
-            "Contact institution's R2R ID (e.g. edu.ucsd.sio)", defaults.contact_institution_id
+            "contact_institution_id",
+            "Contact institution's R2R ID (blank: the R2R operator ID)",
         ),
-        contact_email=ask("Contact email", defaults.contact_email, _email),
-        distro_type=ask("R2R distribution type", defaults.distro_type),
+        contact_email=ask("contact_email", "Contact email", _email),
+        distro_type=ask("distro_type", "R2R distribution type"),
         output_extra_directory=ask(
-            "OpenVDM extra directory for the reports", defaults.output_extra_directory
-        ),
-        tracklines_extra_directory=ask(
-            "OpenVDM extra directory with GeoJSON tracklines", defaults.tracklines_extra_directory
+            "output_extra_directory", "OpenVDM extra directory for the reports"
         ),
     )
     site.extent = _ask_extent(prompt, defaults.extent)

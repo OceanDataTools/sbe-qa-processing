@@ -98,17 +98,24 @@ salinity_range = [0.0, 42.0]
 
 [OpenVDM](https://github.com/OceanDataTools/openvdm) can run the QA after each CTD transfer, as a
 `postCollectionSystemTransfer` hook. The hook reads the current cruise from OpenVDM's API
-(`api/warehouse/getCruiseConfig`): cruise ID, name, PI, location, dates, ports, the warehouse
-directory, the CTD transfer's destination, the extra directories and the MD5 summary.
+(`api/warehouse/getCruiseConfig`): cruise ID, name, PI, location, dates, ports, the cruise
+extent, the warehouse directory, the CTD transfer's destination, the extra directories and the
+MD5 summary. From OpenVDM 2.17, the vessel's name, contact and R2R vessel, operator and
+scheduler IDs come from the `vessel` block of `openvdm.yaml`, which OpenVDM's installer asks for.
+With `--site-root` instead of `--openvdm-config`, they come from the copy in the cruise's
+`ovdmConfig.json`.
 
 1. Install this project somewhere OpenVDM's worker can run it (it has its own environment, not
    OpenVDM's venv), and fetch the map data: `uv sync && uv run sbe-qa-processing fetch-map-data`.
 2. In OpenVDM, add an extra directory for the reports (Configuration > Extra Directories), named
    `CTD_QA` by default, e.g. with destination `Products/CTD_QA`.
-3. Write the ship's site config once, for what OpenVDM doesn't store: the vessel and its R2R
-   IDs, the report contact, the extra directories and a fallback cruise extent. It prompts for
-   each field and works offline. `--from-r2r` pre-fills the vessel, operator and scheduler from
-   any past cruise of the ship in R2R:
+3. Write the ship's site config once, for what OpenVDM doesn't store: the reports' extra
+   directory, the R2R distribution type, a fallback cruise extent and QA thresholds, and, for
+   OpenVDM before 2.17, the vessel, its R2R IDs and the report contact. It prompts for each
+   field and works offline. Fields already in `openvdm.yaml`'s `vessel` block aren't asked
+   for, since the hook uses OpenVDM's values ahead of the site config's.
+   `--from-r2r` pre-fills the vessel, operator and scheduler from any past cruise of the ship in
+   R2R:
 
    ```bash
    uv run sbe-qa-processing site-config [--from-r2r RR2605]   # writes configs/site.toml
@@ -116,7 +123,8 @@ directory, the CTD transfer's destination, the extra directories and the MD5 sum
 
    Run it again with `--force` to change the file; its current values are the defaults. QA
    thresholds (e.g. for fresh water) are edited by hand under `[thresholds]`.
-   `configs/site.example.toml` shows every field.
+   `configs/site.example.toml` shows every field. The contact institution's R2R ID defaults to
+   the operator ID, since on board the report comes from the ship's operator.
 4. Add the hook to `/opt/openvdm/server/etc/openvdm.yaml`:
 
 ```yaml
@@ -142,8 +150,12 @@ The hook:
   and gives them to the warehouse user when run as root;
 - checks checksums against OpenVDM's MD5 summary. Files changed after the summary was written
   count as pending, not failures, since OpenVDM updates the summary in parallel with the hook;
-- takes the cruise extent from GeoJSON tracklines in the `Tracklines` extra directory (OpenVDM's
-  `build_cruise_tracks`), else from the site config; without either, the Lat/Lon test is GREY (N);
+- takes the cruise extent from OpenVDM's `cruiseExtent`, else from the site config's `[extent]`;
+  without either, the Lat/Lon test is GREY (N). OpenVDM 2.17 stores the extent, which
+  `build_cruise_tracks.py` sets from the ship's track each time the data dashboard runs. A cast
+  near the newest end of the track can fall just outside it until the next dashboard update;
+  the next hook run then passes it. A box across the antimeridian has westernmost > easternmost,
+  as in R2R's reports;
 - names reports `<cruise>_ctd_...` until an R2R fileset ID is passed with `--fileset-id`;
 - exits non-zero with a message on failure, which OpenVDM shows.
 
@@ -159,7 +171,7 @@ uv run sbe-qa-processing run configs/<CRUISE>.toml /path/to/cruise/CTD -o output
 stdout), `--force` and `--fileset-id`. It builds the TOML the same way the hook builds its
 snapshot, and it reports what's missing or assumed: where the cruise extent came from, an
 open-ended cruise's end date (set to today), blank R2R port IDs and a missing vessel ID. The
-hook still rebuilds the TOML on every run, since OpenVDM's cruise details and tracklines change
+hook still rebuilds the TOML on every run, since OpenVDM's cruise details and extent change
 during a cruise.
 
 ## What it checks

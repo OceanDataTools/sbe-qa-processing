@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import FixedLocator, MaxNLocator
 from seabirdscientific.contour import contour_from_t_s_p
 
 from sbe_qa_processing import maps
@@ -224,6 +224,18 @@ def _map_extent(
     )
 
 
+def _wraps_longitudes(extent, longitudes: list[float]) -> bool:
+    """Whether the map is drawn in 0-360° longitudes instead of ±180°: when the cruise extent
+    crosses the antimeridian, or, without an extent, when the casts are closer together that way
+    """
+    if extent is not None:
+        return extent.crosses_antimeridian
+    if not longitudes:
+        return False
+    span = lambda values: max(values) - min(values)
+    return span([lon % 360 for lon in longitudes]) < span(longitudes)
+
+
 def _emptiest_corner(points: list[tuple[float, float]], extent) -> str:
     """The view quadrant with the fewest (lat, lon) points, for placing the world inset"""
     west, east, south, north = extent
@@ -281,29 +293,38 @@ def cast_map(casts: list[CastData], config: CruiseConfig) -> Figure:
     longitudes = [lon for _, lon in box] + [p[1] for _, p in positions]
     if not latitudes:  # no extent and no cast positions
         latitudes, longitudes = [0.0], [0.0]
-    view = _map_extent(latitudes, longitudes)
+    # The view is worked out in longitudes that don't jump at 180°, e.g. 178 to 182
+    wraps = _wraps_longitudes(extent, longitudes)
+    unwrap = (lambda lon: lon % 360) if wraps else (lambda lon: lon)
+    view = _map_extent(latitudes, [unwrap(lon) for lon in longitudes])
     center_lat, center_lon = (view[2] + view[3]) / 2, (view[0] + view[1]) / 2
+    # The view, the extent box and the coastlines are drawn relative to the center, so they
+    # stay whole across the antimeridian; cast positions are points and need no shift
+    central = (center_lon + 180) % 360 - 180  # the same meridian, within ±180
+    frame = ccrs.PlateCarree(central_longitude=central)
+    relative = (view[0] - center_lon, view[1] - center_lon, view[2], view[3])
 
     figure = plt.figure(figsize=(PAGE[0] - 1, 5.2), layout="constrained")
-    axis = figure.add_subplot(projection=ccrs.Mercator(central_longitude=center_lon))
-    axis.set_extent(view, crs=ccrs.PlateCarree())
+    axis = figure.add_subplot(projection=ccrs.Mercator(central_longitude=central))
+    axis.set_extent(relative, crs=frame)
     axis.set_facecolor(WATER)
     data_crs = ccrs.PlateCarree()
 
     # Natural Earth 10m layers, clipped to a slightly larger window than the view
     window = (view[0] - 0.5, view[1] + 0.5, view[2] - 0.5, view[3] + 0.5)
-    land = maps.clipped_geometries("physical", "land", "10m", window)
+    layer = lambda name: maps.clipped_geometries("physical", name, "10m", window, center_lon)
+    land = layer("land")
     if land:
-        axis.add_geometries(land, data_crs, facecolor=LAND, edgecolor="none", zorder=0.5)
-    lakes = maps.clipped_geometries("physical", "lakes", "10m", window)
+        axis.add_geometries(land, frame, facecolor=LAND, edgecolor="none", zorder=0.5)
+    lakes = layer("lakes")
     if lakes:
         axis.add_geometries(
-            lakes, data_crs, facecolor=WATER, edgecolor=COAST, linewidth=0.4, zorder=0.6
+            lakes, frame, facecolor=WATER, edgecolor=COAST, linewidth=0.4, zorder=0.6
         )
-    coastline = maps.clipped_geometries("physical", "coastline", "10m", window)
+    coastline = layer("coastline")
     if coastline:
         axis.add_geometries(
-            coastline, data_crs, facecolor="none", edgecolor=COAST, linewidth=0.5, zorder=0.7
+            coastline, frame, facecolor="none", edgecolor=COAST, linewidth=0.5, zorder=0.7
         )
     if land is None:
         axis.text(
@@ -318,14 +339,14 @@ def cast_map(casts: list[CastData], config: CruiseConfig) -> Figure:
     if extent is not None:
         axis.add_patch(
             Rectangle(
-                (extent.westernmost, extent.southernmost),
-                extent.easternmost - extent.westernmost,
+                (unwrap(extent.westernmost) - center_lon, extent.southernmost),
+                unwrap(extent.easternmost) - unwrap(extent.westernmost),
                 extent.northernmost - extent.southernmost,
                 fill=False,
                 ls="--",
                 color="0.3",
                 label="cruise extent",
-                transform=data_crs,
+                transform=frame,
                 zorder=2,
             )
         )
@@ -358,9 +379,13 @@ def cast_map(casts: list[CastData], config: CruiseConfig) -> Figure:
             )
 
     gridlines = axis.gridlines(draw_labels=True, linewidth=0.3, color="0.6", alpha=0.6)
+    if wraps:
+        # cartopy's default meridians are worked out in ±180°, which leaves only 180° in view
+        ticks = MaxNLocator(nbins=6).tick_values(view[0], view[1])
+        gridlines.xlocator = FixedLocator([(tick + 180) % 360 - 180 for tick in ticks])
     gridlines.top_labels = gridlines.right_labels = False
     gridlines.xlabel_style = gridlines.ylabel_style = {"size": 7}
-    corner = _emptiest_corner([p for _, p in positions], view)
+    corner = _emptiest_corner([(lat, unwrap(lon)) for _, (lat, lon) in positions], view)
     legend_corner = {
         "upper right": "lower left",
         "upper left": "lower right",
@@ -369,7 +394,7 @@ def cast_map(casts: list[CastData], config: CruiseConfig) -> Figure:
     }[corner]
     if axis.get_legend_handles_labels()[0]:
         axis.legend(fontsize=7, loc=legend_corner)
-    _world_inset(figure, axis, corner, center_lat, center_lon)
+    _world_inset(figure, axis, corner, center_lat, central)
     axis.set_title(
         "Cast positions (hollow squares are deck tests; red is outside the extent)", fontsize=10
     )

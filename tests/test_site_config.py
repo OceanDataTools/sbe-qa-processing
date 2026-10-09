@@ -40,6 +40,12 @@ def r2r_api(monkeypatch):
     return requested
 
 
+@pytest.fixture(autouse=True)
+def no_openvdm_install(monkeypatch, tmp_path):
+    """site-config reads /opt/openvdm's openvdm.yaml when it exists; not in these tests"""
+    monkeypatch.setattr("sbe_qa_processing.cli.DEFAULT_OPENVDM_CONFIG", tmp_path / "missing.yaml")
+
+
 def answer(monkeypatch, *lines: str) -> None:
     monkeypatch.setattr("sys.stdin", io.StringIO("".join(f"{line}\n" for line in lines)))
 
@@ -74,11 +80,10 @@ def test_prompts(tmp_path, monkeypatch, capsys):
         "tech@example.org",
         "",  # distribution type: default
         "",  # reports extra directory: default
-        "Tracks",
-        "-110",  # westernmost
-        "-120",  # easternmost, west of westernmost: the box is re-asked
-        "30",
-        "36",
+        "-125",  # westernmost
+        "-115",  # easternmost
+        "36",  # southernmost
+        "30",  # northernmost, south of southernmost: the box is re-asked
         "-125",
         "-115",
         "30",
@@ -91,11 +96,25 @@ def test_prompts(tmp_path, monkeypatch, capsys):
     assert (site.vessel_id, site.vessel_name, site.scheduler_id) == ("33RR", "Roger Revelle", "")
     assert site.contact_email == "tech@example.org"
     assert (site.distro_type, site.output_extra_directory) == ("post-cruise", "CTD_QA")
-    assert site.tracklines_extra_directory == "Tracks"
     assert site.extent == Extent(-125.0, -115.0, 30.0, 36.0)
     prompts = capsys.readouterr().err
     assert "not an email address" in prompts and "outside ±90" in prompts
-    assert "westernmost must be <= easternmost" in prompts
+    assert "southernmost must be <= northernmost" in prompts
+
+
+def test_prompted_extent_across_the_antimeridian(tmp_path, monkeypatch, capsys):
+    answer(monkeypatch, *[""] * 9, "178", "-178", "-20", "-15")
+    output = tmp_path / "site.toml"
+    assert main(["site-config", "-o", str(output)]) == 0
+    assert load_site_config(output).extent == Extent(178.0, -178.0, -20.0, -15.0)
+    assert "a box across the antimeridian" in capsys.readouterr().err
+
+
+def test_old_tracklines_setting_is_ignored(tmp_path, caplog):
+    path = tmp_path / "site.toml"
+    path.write_text('[openvdm]\ntracklines_extra_directory = "Tracklines"\n')
+    assert load_site_config(path) == SiteConfig()
+    assert "tracklines_extra_directory is no longer used" in caplog.text
 
 
 def test_from_r2r_without_a_terminal(tmp_path, monkeypatch, capsys, r2r_api):
@@ -128,3 +147,49 @@ def test_overwrites_only_with_force_starting_from_the_file(tmp_path, monkeypatch
     site = load_site_config(output)
     assert (site.vessel_id, site.vessel_name) == ("32QU", "")
     assert site.extent == existing.extent  # kept as the default
+
+
+OPENVDM_YAML = """\
+siteRoot: "http://127.0.0.1/"
+vessel:
+    name: "Roger Revelle"
+    contact:
+        institution: "Scripps Institution of Oceanography"
+        email: ""
+    r2r:
+        vesselID: "33RR"
+        operatorID: "edu.ucsd.sio"
+        schedulerID: "org.unols"
+"""
+
+
+def test_settings_in_openvdm_yaml_are_not_asked_for(tmp_path, monkeypatch, capsys):
+    openvdm_yaml = tmp_path / "openvdm.yaml"
+    openvdm_yaml.write_text(OPENVDM_YAML)
+    answer(
+        monkeypatch,
+        "",  # contact institution's R2R ID: blank, so the operator ID
+        "tech@example.org",  # contact email: empty in openvdm.yaml, so asked
+        "",  # distribution type
+        "",  # reports extra directory
+        "",  # no fallback extent
+    )
+    output = tmp_path / "site.toml"
+    assert main(["site-config", "--openvdm-config", str(openvdm_yaml), "-o", str(output)]) == 0
+    site = load_site_config(output)
+    assert (site.vessel_id, site.vessel_name, site.contact_institution) == ("", "", "")
+    assert (site.contact_email, site.contact_institution_id) == ("tech@example.org", "")
+    prompts = capsys.readouterr().err
+    assert "vessel_id = 33RR" in prompts and "R2R vessel ID" not in prompts
+    assert "Contact email" in prompts
+
+
+def test_openvdm_yaml_without_a_vessel_block(tmp_path, monkeypatch, capsys):
+    # OpenVDM before 2.17: every field is asked for
+    openvdm_yaml = tmp_path / "openvdm.yaml"
+    openvdm_yaml.write_text('siteRoot: "http://127.0.0.1/"\n')
+    answer(monkeypatch, "33RR")
+    output = tmp_path / "site.toml"
+    assert main(["site-config", "--openvdm-config", str(openvdm_yaml), "-o", str(output)]) == 0
+    assert load_site_config(output).vessel_id == "33RR"
+    assert "aren't asked for" not in capsys.readouterr().err

@@ -4,8 +4,14 @@ OpenVDM (https://github.com/OceanDataTools/openvdm) runs ``postCollectionSystemT
 commands from ``openvdm.yaml`` after each collection system transfer. Everything the report
 needs comes from OpenVDM's ``api/warehouse/getCruiseConfig``: the cruise ID, name, PI, location,
 dates and ports; the warehouse directory and MD5 summary file; and each collection system
-transfer's and extra directory's destination. A cruise bounding box comes from the GeoJSON
-tracklines OpenVDM's ``build_cruise_tracks`` writes, else from the optional site config.
+transfer's and extra directory's destination; and, from OpenVDM 2.17, the cruise bounding box
+(``cruiseExtent``) that ``build_cruise_tracks.py`` sets from the ship's track. Without it, the
+bounding box comes from the optional site config.
+
+OpenVDM 2.17 also keeps the vessel's name, contact and R2R IDs in ``openvdm.yaml``'s ``vessel``
+block, which it copies into each cruise's ``ovdmConfig.json``. The hook reads it from
+``openvdm.yaml`` when it has that file, else from the cruise's ``ovdmConfig.json``. Its values
+win over the site config's.
 
 The OpenVDM API is read over HTTP, so this runs in its own environment, not OpenVDM's venv.
 """
@@ -49,7 +55,8 @@ class OpenVDMError(RuntimeError):
 
 @dataclass
 class SiteConfig:
-    """Per-ship settings OpenVDM doesn't store, from an optional TOML::
+    """Per-ship settings OpenVDM doesn't store, from an optional TOML. From OpenVDM 2.17, the
+    vessel, R2R IDs and contact are in openvdm.yaml, whose values win over these::
 
     [vessel]
     id = "33RR"
@@ -59,7 +66,7 @@ class SiteConfig:
     operator_id = "edu.ucsd.sio"
     scheduler_id = "org.unols"
 
-    [extent]                  # used when there are no tracklines
+    [extent]                  # used when OpenVDM has no cruiseExtent
     westernmost = -125.0
     easternmost = -115.0
     southernmost = 30.0
@@ -67,7 +74,6 @@ class SiteConfig:
 
     [openvdm]
     output_extra_directory = "CTD_QA"
-    tracklines_extra_directory = "Tracklines"
 
     [provenance]
     distro_type = "post-cruise"
@@ -84,7 +90,6 @@ class SiteConfig:
     scheduler_id: str = ""
     extent: Extent | None = None
     output_extra_directory: str = "CTD_QA"
-    tracklines_extra_directory: str = "Tracklines"
     distro_type: str = "post-cruise"
     contact_institution: str = ""
     contact_institution_id: str = ""
@@ -99,6 +104,13 @@ def load_site_config(path: Path | str | None) -> SiteConfig:
         data = tomllib.load(file)
     vessel, cruise = data.get("vessel", {}), data.get("cruise", {})
     openvdm, provenance = data.get("openvdm", {}), data.get("provenance", {})
+    if "tracklines_extra_directory" in openvdm:
+        # The hook read GeoJSON tracklines before OpenVDM 2.17 stored the cruise extent
+        logger.warning(
+            "%s: [openvdm] tracklines_extra_directory is no longer used; the cruise extent "
+            "comes from OpenVDM's cruiseExtent",
+            path,
+        )
     defaults = SiteConfig()
     return SiteConfig(
         vessel_id=vessel.get("id", ""),
@@ -108,9 +120,6 @@ def load_site_config(path: Path | str | None) -> SiteConfig:
         extent=Extent(**data["extent"]) if "extent" in data else None,
         output_extra_directory=openvdm.get(
             "output_extra_directory", defaults.output_extra_directory
-        ),
-        tracklines_extra_directory=openvdm.get(
-            "tracklines_extra_directory", defaults.tracklines_extra_directory
         ),
         distro_type=provenance.get("distro_type", defaults.distro_type),
         contact_institution=provenance.get("contact_institution", ""),
@@ -131,7 +140,9 @@ def site_config_to_toml(site: SiteConfig) -> str:
 
     lines = [
         "# Per-ship settings for the OpenVDM hook (sbe-qa-processing openvdm --site-config ...).",
-        "# OpenVDM supplies the cruise ID, name, PI, location, dates and ports.",
+        "# OpenVDM supplies the cruise ID, name, PI, location, dates and ports. From OpenVDM",
+        "# 2.17, openvdm.yaml's vessel block supplies the vessel name, contact and R2R IDs,",
+        "# and wins over the same fields here.",
         "",
         "[vessel]",
         entry("id", site.vessel_id, "R2R vessel ID (ICES code)"),
@@ -141,8 +152,9 @@ def site_config_to_toml(site: SiteConfig) -> str:
         entry("operator_id", site.operator_id),
         entry("scheduler_id", site.scheduler_id),
         "",
-        "# Cruise bounding box for the NAV tests, used when OpenVDM has no tracklines",
-        "# (build_cruise_tracks output in the tracklines extra directory)",
+        "# Cruise bounding box for the NAV tests, used when OpenVDM has no cruise extent",
+        "# (OpenVDM 2.17's cruiseExtent, set by build_cruise_tracks.py). westernmost >",
+        "# easternmost is a box across the antimeridian",
     ]
     edges = fields_of(Extent)
     if site.extent:
@@ -153,7 +165,6 @@ def site_config_to_toml(site: SiteConfig) -> str:
         "",
         "[openvdm]",
         entry("output_extra_directory", site.output_extra_directory, "where reports go"),
-        entry("tracklines_extra_directory", site.tracklines_extra_directory, "GeoJSON tracklines"),
         "",
         "[provenance]",
         entry("distro_type", site.distro_type),
@@ -168,11 +179,66 @@ def site_config_to_toml(site: SiteConfig) -> str:
     return "\n".join(lines + thresholds) + "\n"
 
 
-def site_root_from_config(openvdm_config: Path | str) -> str:
-    """OpenVDM's web root (``siteRoot`` in openvdm.yaml), ending in a slash"""
+def load_openvdm_yaml(openvdm_config: Path | str) -> dict:
     with open(openvdm_config) as file:
-        site_root = yaml.safe_load(file)["siteRoot"]
+        return yaml.safe_load(file) or {}
+
+
+def site_root_from_config(openvdm_config: Path | str | dict) -> str:
+    """OpenVDM's web root (``siteRoot`` in openvdm.yaml, or its loaded contents), ending in a
+    slash
+    """
+    data = (
+        openvdm_config if isinstance(openvdm_config, dict) else load_openvdm_yaml(openvdm_config)
+    )
+    site_root = data["siteRoot"]
     return site_root if site_root.endswith("/") else site_root + "/"
+
+
+# OpenVDM 2.17's vessel block: the SiteConfig field each of its settings fills
+VESSEL_SETTINGS = {
+    "vessel_name": ("name",),
+    "vessel_id": ("r2r", "vesselID"),
+    "operator_id": ("r2r", "operatorID"),
+    "scheduler_id": ("r2r", "schedulerID"),
+    "contact_institution": ("contact", "institution"),
+    "contact_email": ("contact", "email"),
+}
+
+
+@dataclass
+class OpenVDMVessel:
+    """The vessel settings OpenVDM has, by SiteConfig field, and where they came from"""
+
+    settings: dict[str, str] = field(default_factory=dict)
+    source: str = "none"  # "openvdm.yaml", "ovdmConfig.json" or "none"
+
+
+def vessel_settings(block, source: str) -> OpenVDMVessel:
+    """The set fields of a ``vessel`` block. Empty and missing values are unset; values are
+    strings, so an R2R ID such as 3301 keeps its form
+    """
+    settings = {}
+    for name, path in VESSEL_SETTINGS.items():
+        value = block
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        if value is not None and not isinstance(value, dict) and str(value).strip():
+            settings[name] = str(value).strip()
+    return OpenVDMVessel(settings, source)
+
+
+def cruise_vessel(cruise_dir: Path, config_filename: str) -> OpenVDMVessel:
+    """The vessel block saved in the cruise's ovdmConfig.json, if any"""
+    path = cruise_dir / config_filename
+    try:
+        block = json.loads(path.read_text()).get("vessel")
+    except FileNotFoundError:
+        return OpenVDMVessel()
+    except (OSError, ValueError, AttributeError) as error:
+        logger.warning("can't read the vessel settings from %s: %s", path, error)
+        return OpenVDMVessel()
+    return vessel_settings(block, "ovdmConfig.json") if block else OpenVDMVessel()
 
 
 def fetch_cruise_config(site_root: str) -> dict:
@@ -194,42 +260,17 @@ def parse_openvdm_date(text: str | None) -> date | None:
     return None
 
 
-def _coordinates(geometry) -> list[tuple[float, float]]:
-    """(longitude, latitude) pairs from any GeoJSON object"""
-    if isinstance(geometry, dict):
-        kind = geometry.get("type")
-        if kind == "FeatureCollection":
-            return [c for feature in geometry.get("features", []) for c in _coordinates(feature)]
-        if kind == "Feature":
-            return _coordinates(geometry.get("geometry"))
-        if kind == "GeometryCollection":
-            return [c for g in geometry.get("geometries", []) for c in _coordinates(g)]
-        return _coordinates(geometry.get("coordinates"))
-    if isinstance(geometry, list) and geometry:
-        if isinstance(geometry[0], int | float):
-            return [(float(geometry[0]), float(geometry[1]))] if len(geometry) >= 2 else []
-        return [c for item in geometry for c in _coordinates(item)]
-    return []
-
-
-def tracklines_extent(directory: Path) -> Extent | None:
-    """The bounding box of every GeoJSON trackline under directory, or None"""
-    points = []
-    for path in sorted(directory.rglob("*.geojson")) if directory.is_dir() else []:
-        try:
-            points += _coordinates(json.loads(path.read_text()))
-        except (OSError, ValueError) as error:
-            logger.warning("skipping unreadable trackline %s: %s", path, error)
-    points = [(lon, lat) for lon, lat in points if -180 <= lon <= 180 and -90 <= lat <= 90]
-    if not points:
+def openvdm_extent(value) -> Extent | None:
+    """OpenVDM's cruiseExtent: an object with the four edges [decimal degrees], or None when
+    OpenVDM has none (no track yet, or OpenVDM before 2.17)
+    """
+    if not value:
         return None
-    longitudes, latitudes = zip(*points, strict=True)
-    return Extent(
-        westernmost=min(longitudes),
-        easternmost=max(longitudes),
-        southernmost=min(latitudes),
-        northernmost=max(latitudes),
-    )
+    try:
+        return Extent(**{edge: float(value[edge]) for edge in fields_of(Extent)})
+    except (KeyError, TypeError, ValueError):
+        logger.warning("ignoring OpenVDM's malformed cruiseExtent: %r", value)
+        return None
 
 
 def _translate(path: str, cruise_id: str) -> str:
@@ -243,15 +284,23 @@ class HookRun:
     fileset_dir: Path
     output_dir: Path
     owner: str  # the warehouse user, for file ownership
-    extent_source: str  # "tracklines", "site config" or "none"
+    extent_source: str  # "openvdm", "site config" or "none"
+    vessel_source: str  # where OpenVDM's vessel block came from: "openvdm.yaml",
+    # "ovdmConfig.json" or "none"
     # What the config is missing, or had to assume
     notes: list[str] = field(default_factory=list)
 
 
 def resolve(
-    cruise_config: dict, site: SiteConfig, transfer_name: str, fileset_id: str = ""
+    cruise_config: dict,
+    site: SiteConfig,
+    transfer_name: str,
+    fileset_id: str = "",
+    vessel: OpenVDMVessel | None = None,
 ) -> HookRun:
-    """The QA configuration and directories for a collection system transfer"""
+    """The QA configuration and directories for a collection system transfer. vessel is
+    openvdm.yaml's vessel block; without it, the one in the cruise's ovdmConfig.json is used
+    """
     warehouse = cruise_config["warehouseConfig"]
     cruise_id = cruise_config["cruiseID"]
     if not cruise_id:
@@ -273,18 +322,15 @@ def resolve(
     output_dir = cruise_dir / _translate(output["destDir"], cruise_id)
 
     notes = []
-    extent, extent_source = None, "none"
-    tracks = extras.get(site.tracklines_extra_directory)
-    if tracks is not None:
-        extent = tracklines_extent(cruise_dir / _translate(tracks["destDir"], cruise_id))
-        extent_source = "tracklines" if extent else "none"
+    extent, extent_source = openvdm_extent(cruise_config.get("cruiseExtent")), "openvdm"
     if extent is None and site.extent is not None:
         extent, extent_source = site.extent, "site config"
-        notes.append("no OpenVDM tracklines yet; the cruise extent is the site config's [extent]")
+        notes.append("OpenVDM has no cruise extent; using the site config's [extent]")
     elif extent is None:
+        extent_source = "none"
         notes.append(
-            "no cruise extent: no OpenVDM tracklines and no [extent] in the site config, "
-            "so the Lat/Lon test is GREY (N)"
+            "no cruise extent: OpenVDM has none (it needs OpenVDM 2.17 and build_cruise_tracks.py) "
+            "and the site config has no [extent], so the Lat/Lon test is GREY (N)"
         )
 
     md5_summary = warehouse.get("md5SummaryFn")
@@ -310,8 +356,24 @@ def resolve(
     )
     if not (depart_port.port_id and arrive_port.port_id):
         notes.append("OpenVDM has no R2R port IDs, so the XML's port IDs are blank")
-    if not site.vessel_id:
-        notes.append("no vessel ID: set [vessel] id in the site config")
+    if vessel is None:
+        config_filename = warehouse.get("cruiseConfigFn") or "ovdmConfig.json"
+        vessel = cruise_vessel(cruise_dir, config_filename)
+    # OpenVDM's vessel settings win over the site config's, field by field
+    ship = {}
+    for name in VESSEL_SETTINGS:
+        theirs, ours = vessel.settings.get(name, ""), getattr(site, name)
+        ship[name] = theirs or ours
+        if theirs and ours and theirs != ours:
+            notes.append(
+                f"{name} is {theirs!r} in OpenVDM's {vessel.source} and {ours!r} in the site "
+                f"config; using {vessel.source}'s"
+            )
+    if not ship["vessel_id"]:
+        notes.append(
+            "no vessel ID: set vessel.r2r.vesselID in openvdm.yaml (OpenVDM 2.17), or [vessel] "
+            "id in the site config"
+        )
     config = CruiseConfig(
         cruise_id=cruise_id,
         depart_date=depart,
@@ -321,16 +383,17 @@ def resolve(
         cruise_name=cruise_config.get("cruiseName") or "",
         cruise_pi=cruise_config.get("cruisePI") or "",
         cruise_location=cruise_config.get("cruiseLocation") or "",
-        vessel_id=site.vessel_id,
-        vessel_name=site.vessel_name,
-        operator_id=site.operator_id,
-        scheduler_id=site.scheduler_id,
+        vessel_id=ship["vessel_id"],
+        vessel_name=ship["vessel_name"],
+        operator_id=ship["operator_id"],
+        scheduler_id=ship["scheduler_id"],
         depart_port=depart_port,
         arrive_port=arrive_port,
         distro_type=site.distro_type,
-        contact_institution=site.contact_institution,
-        contact_institution_id=site.contact_institution_id,
-        contact_email=site.contact_email,
+        contact_institution=ship["contact_institution"],
+        # On board, the report comes from the ship's operator, so OpenVDM doesn't store this
+        contact_institution_id=site.contact_institution_id or ship["operator_id"],
+        contact_email=ship["contact_email"],
         manifest_path=cruise_dir / md5_summary if md5_summary else None,
         thresholds=site.thresholds,
     )
@@ -341,6 +404,7 @@ def resolve(
         output_dir=output_dir,
         owner=warehouse.get("shipboardDataWarehouseUsername") or "",
         extent_source=extent_source,
+        vessel_source=vessel.source,
         notes=notes,
     )
 

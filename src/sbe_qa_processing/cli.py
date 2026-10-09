@@ -21,6 +21,7 @@ from pathlib import Path
 from sbe_qa_processing.config import R2RError
 from sbe_qa_processing.openvdm import DEFAULT_OPENVDM_CONFIG, OpenVDMError
 
+logger = logging.getLogger(__name__)
 STDOUT = "-"
 
 
@@ -158,7 +159,23 @@ def _openvdm(args: argparse.Namespace) -> int:
     written = [snapshot, *_write_reports(result, run.output_dir, args.execute_notebook)]
     openvdm.chown_tree(run.output_dir, run.owner)
     _summarize(result, written)
+    _queue_md5_update(args, run, written)
     return 0
+
+
+def _queue_md5_update(args: argparse.Namespace, run, written: list[Path]) -> None:
+    """Adds the reports to OpenVDM's MD5 summary. The QA itself succeeded, so a failure here
+    is a warning, not a failed hook
+    """
+    from sbe_qa_processing import openvdm
+
+    # With --site-root there's no openvdm.yaml to find OpenVDM by; try the default install
+    openvdm_yaml = DEFAULT_OPENVDM_CONFIG if args.site_root else args.openvdm_config
+    problem = openvdm.queue_md5_update(openvdm.openvdm_install_dir(openvdm_yaml), run, written)
+    if problem:
+        logger.warning("the reports aren't in OpenVDM's MD5 summary: %s", problem)
+    else:
+        print(f"queued an MD5 summary update for the reports in {run.output_dir}")
 
 
 def _config_from_r2r(args: argparse.Namespace) -> int:

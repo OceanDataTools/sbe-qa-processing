@@ -154,6 +154,10 @@ The hook:
 - writes the XML, PDF, SVG plots and notebook into the extra directory, plus
   `<cruise>_ctd_cruise.toml`, a snapshot of what OpenVDM supplied that the notebook re-runs from,
   and gives them to the warehouse user when run as root;
+- adds those files to the cruise's MD5 summary, with OpenVDM's `utils/update_md5_summary.py`
+  (OpenVDM 2.16.1 or later), found from `--openvdm-config`'s install directory, or
+  `/opt/openvdm` with `--site-root`. If that fails (e.g. an older OpenVDM), the hook logs a
+  warning and still succeeds, and the reports reach the summary at its next full rebuild;
 - checks checksums against OpenVDM's MD5 summary. Files changed after the summary was written
   count as pending, not failures, since OpenVDM updates the summary in parallel with the hook;
 - takes the cruise extent from OpenVDM's `cruiseExtent`, else from the site config's `[extent]`;

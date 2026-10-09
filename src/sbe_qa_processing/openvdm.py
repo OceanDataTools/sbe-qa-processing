@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import tomllib
 import urllib.request
 from dataclasses import dataclass, field
@@ -45,6 +46,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_OPENVDM_CONFIG = Path("/opt/openvdm/server/etc/openvdm.yaml")
 API_TIMEOUT = 30  # [s]
+MD5_UPDATE_TIMEOUT = 120  # [s] to queue the job, not to hash the files
 # A transfer is worth a new report only if it brought raw CTD files
 CTD_FILE = re.compile(r"\.(hex|dat|xmlcon|con|hdr|bl)\b", re.IGNORECASE)
 
@@ -288,6 +290,7 @@ def _translate(path: str, cruise_id: str) -> str:
 class HookRun:
     config: CruiseConfig
     transfer: str
+    cruise_dir: Path
     fileset_dir: Path
     output_dir: Path
     owner: str  # the warehouse user, for file ownership
@@ -407,6 +410,7 @@ def resolve(
     return HookRun(
         config=config,
         transfer=transfer_name,
+        cruise_dir=cruise_dir,
         fileset_dir=fileset_dir,
         output_dir=output_dir,
         owner=warehouse.get("shipboardDataWarehouseUsername") or "",
@@ -428,6 +432,46 @@ def has_ctd_changes(changed: list[str]) -> bool:
     space-joined (and may themselves contain spaces), so this matches extensions in the text
     """
     return any(CTD_FILE.search(text) for text in changed)
+
+
+def openvdm_install_dir(openvdm_config: Path | str) -> Path:
+    """OpenVDM's install directory, from its <install>/server/etc/openvdm.yaml"""
+    return Path(openvdm_config).absolute().parents[2]
+
+
+def queue_md5_update(install_dir: Path, run: HookRun, written: list[Path]) -> str | None:
+    """Queues an MD5 summary update for the files the hook wrote, with OpenVDM's
+    utils/update_md5_summary.py (OpenVDM 2.16.1). OpenVDM only hashes the files a transfer or
+    data dashboard job reports, so without this the reports stay out of the summary. Returns
+    what went wrong, or None
+    """
+    python = install_dir / "venv" / "bin" / "python"
+    script = install_dir / "utils" / "update_md5_summary.py"
+    if not (python.is_file() and script.is_file()):
+        return f"no {script} with {python} (it needs OpenVDM 2.16.1 or later)"
+    files = sorted(
+        {
+            f
+            for path in written
+            for f in ([path] if path.is_file() else path.rglob("*"))
+            if f.is_file()
+        }
+    )
+    try:
+        relative = [str(f.relative_to(run.cruise_dir)) for f in files]
+    except ValueError:
+        return f"the reports in {run.output_dir} are outside the cruise directory {run.cruise_dir}"
+    command = [str(python), str(script), "--cruiseID", run.config.cruise_id, *relative]
+    try:
+        completed = subprocess.run(
+            command, capture_output=True, text=True, timeout=MD5_UPDATE_TIMEOUT, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return f"couldn't run {script}: {error}"
+    if completed.returncode != 0:
+        output = (completed.stderr or completed.stdout).strip().splitlines()
+        return f"{script} exited {completed.returncode}: {output[-1] if output else 'no output'}"
+    return None
 
 
 def chown_tree(path: Path, owner: str) -> None:

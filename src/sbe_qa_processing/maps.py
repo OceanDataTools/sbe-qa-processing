@@ -12,6 +12,7 @@ import logging
 from collections.abc import Iterable
 
 import cartopy.feature as cfeature
+from shapely.affinity import translate
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
@@ -27,22 +28,37 @@ def _feature(category: str, name: str, scale: str) -> cfeature.NaturalEarthFeatu
 
 
 def clipped_geometries(
-    category: str, name: str, scale: str, extent: tuple[float, float, float, float]
+    category: str,
+    name: str,
+    scale: str,
+    extent: tuple[float, float, float, float],
+    central_longitude: float = 0.0,
 ) -> list[BaseGeometry] | None:
-    """Geometries of a Natural Earth layer clipped to (west, east, south, north), or None if the
-    layer can't be loaded (e.g. not downloaded and no network)
+    """Geometries of a Natural Earth layer clipped to (west, east, south, north), with longitudes
+    relative to central_longitude, or None if the layer can't be loaded (e.g. not downloaded and
+    no network). The window may run past ±180 (e.g. 170 to 190 across the antimeridian): each
+    side of 180 is clipped separately and shifted into place
     """
     west, east, south, north = extent
-    window = box(west, south, east, north)
+    clipped = []
     try:
-        geometries: Iterable[BaseGeometry] = _feature(
-            category, name, scale
-        ).intersecting_geometries((west, east, south, north))
-        clipped = [geometry.intersection(window) for geometry in geometries]
+        feature = _feature(category, name, scale)
+        for shift in (-360.0, 0.0, 360.0):
+            low, high = max(west + shift, -180.0), min(east + shift, 180.0)
+            if low >= high:
+                continue
+            window = box(low, south, high, north)
+            geometries: Iterable[BaseGeometry] = feature.intersecting_geometries(
+                (low, high, south, north)
+            )
+            for geometry in geometries:
+                part = geometry.intersection(window)
+                if not part.is_empty:
+                    clipped.append(translate(part, xoff=-shift - central_longitude))
     except Exception as error:  # noqa: BLE001 - network, cache and shapefile errors all mean "no layer"
         logger.warning("Natural Earth %s %s %s unavailable: %s", scale, category, name, error)
         return None
-    return [geometry for geometry in clipped if not geometry.is_empty]
+    return clipped
 
 
 def world_geometries(category: str, name: str) -> list[BaseGeometry] | None:

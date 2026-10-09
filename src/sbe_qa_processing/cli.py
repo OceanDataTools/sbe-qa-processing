@@ -116,11 +116,22 @@ def _resolve_openvdm(args: argparse.Namespace):
     """The current cruise's HookRun from OpenVDM and the site config, and OpenVDM's web root"""
     from sbe_qa_processing import openvdm
 
-    site_root = args.site_root or openvdm.site_root_from_config(args.openvdm_config)
+    if args.site_root:
+        # No openvdm.yaml: resolve reads the vessel block from the cruise's ovdmConfig.json
+        site_root, vessel = args.site_root, None
+    else:
+        settings = openvdm.load_openvdm_yaml(args.openvdm_config)
+        site_root = openvdm.site_root_from_config(settings)
+        vessel = openvdm.vessel_settings(settings.get("vessel"), "openvdm.yaml")
     cruise_config = openvdm.fetch_cruise_config(site_root)
     site = openvdm.load_site_config(args.site_config)
     fileset_id = str(args.fileset_id or "")
-    return openvdm.resolve(cruise_config, site, args.transfer, fileset_id), site_root
+    run = openvdm.resolve(cruise_config, site, args.transfer, fileset_id, vessel)
+    return run, site_root
+
+
+def _sources(run) -> str:
+    return f"cruise extent from {run.extent_source}, vessel settings from {run.vessel_source}"
 
 
 def _openvdm(args: argparse.Namespace) -> int:
@@ -136,10 +147,7 @@ def _openvdm(args: argparse.Namespace) -> int:
         print(f"{run.fileset_dir} doesn't exist yet; nothing to do")
         return 0
 
-    print(
-        f"{run.config.cruise_id}: {run.fileset_dir} -> {run.output_dir} "
-        f"(cruise extent from {run.extent_source})"
-    )
+    print(f"{run.config.cruise_id}: {run.fileset_dir} -> {run.output_dir} ({_sources(run)})")
     for note in run.notes:
         print(f"  note: {note}")
     run.output_dir.mkdir(parents=True, exist_ok=True)
@@ -183,7 +191,7 @@ def _config_from_openvdm(args: argparse.Namespace) -> int:
     from sbe_qa_processing import openvdm
 
     run, site_root = _resolve_openvdm(args)
-    print(f"{run.config.cruise_id}: cruise extent from {run.extent_source}", file=sys.stderr)
+    print(f"{run.config.cruise_id}: {_sources(run)}", file=sys.stderr)
     for note in run.notes:
         print(f"  note: {note}", file=sys.stderr)
     return _write_cruise_toml(openvdm.cruise_toml(run, site_root), run.config.cruise_id, args)
@@ -191,11 +199,24 @@ def _config_from_openvdm(args: argparse.Namespace) -> int:
 
 def _site_config(args: argparse.Namespace) -> int:
     from sbe_qa_processing.config import fetch_r2r_records
-    from sbe_qa_processing.openvdm import SiteConfig, load_site_config, site_config_to_toml
+    from sbe_qa_processing.openvdm import (
+        SiteConfig,
+        load_openvdm_yaml,
+        load_site_config,
+        site_config_to_toml,
+        vessel_settings,
+    )
     from sbe_qa_processing.site_setup import prompt_site_config, site_from_r2r
 
     if _refuse_overwrite(args.output, args.force):
         return 1
+    # OpenVDM 2.17's vessel settings win over the site config's, so they aren't asked for
+    openvdm_yaml = args.openvdm_config
+    if openvdm_yaml is None and DEFAULT_OPENVDM_CONFIG.exists():
+        openvdm_yaml = DEFAULT_OPENVDM_CONFIG
+    from_openvdm = {}
+    if openvdm_yaml is not None:
+        from_openvdm = vessel_settings(load_openvdm_yaml(openvdm_yaml).get("vessel"), "").settings
     # Re-running over an existing file starts from its values
     existing = str(args.output) != STDOUT and args.output.exists()
     defaults = load_site_config(args.output) if existing else SiteConfig()
@@ -205,7 +226,8 @@ def _site_config(args: argparse.Namespace) -> int:
             raise R2RError(f"R2R has no cruise {args.from_r2r}")
         defaults = site_from_r2r(cruises[0], defaults)
         print(f"Vessel and R2R IDs from R2R's cruise {args.from_r2r}", file=sys.stderr)
-    _write_text(site_config_to_toml(prompt_site_config(defaults)), args.output)
+    site = prompt_site_config(defaults, from_openvdm=from_openvdm)
+    _write_text(site_config_to_toml(site), args.output)
     return 0
 
 
@@ -280,10 +302,15 @@ def _add_openvdm_arguments(parser: argparse.ArgumentParser) -> None:
         metavar="OPENVDM_YAML",
         type=Path,
         default=DEFAULT_OPENVDM_CONFIG,
-        help="openvdm.yaml, for OpenVDM's siteRoot (default %(default)s)",
+        help="openvdm.yaml, for OpenVDM's siteRoot and vessel settings (default %(default)s)",
     )
     source.add_argument(
-        "--site-root", metavar="URL", help="OpenVDM's web root URL, instead of --openvdm-config"
+        "--site-root",
+        metavar="URL",
+        help=(
+            "OpenVDM's web root URL, instead of --openvdm-config; the vessel settings then come "
+            "from the cruise's ovdmConfig.json"
+        ),
     )
     parser.add_argument(
         "--site-config",
@@ -399,8 +426,9 @@ def build_parser() -> argparse.ArgumentParser:
         "site-config",
         help="make the per-ship site TOML for the openvdm hook, by prompting for each field",
         description=(
-            "Prompts for the per-ship settings OpenVDM doesn't store: vessel and R2R IDs, "
-            "report contact, OpenVDM extra directories and a fallback cruise bounding box. "
+            "Prompts for the per-ship settings OpenVDM doesn't store: vessel and R2R IDs and "
+            "report contact (unless openvdm.yaml has them, from OpenVDM 2.17), the reports' "
+            "extra directory and a fallback cruise bounding box. "
             "Works offline; --from-r2r pre-fills the vessel and R2R IDs. Over an existing "
             "file (with --force), its values are the defaults."
         ),
@@ -417,6 +445,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("configs/site.toml"),
         help="site TOML to write, or - for stdout (default %(default)s)",
+    )
+    site.add_argument(
+        "--openvdm-config",
+        metavar="OPENVDM_YAML",
+        type=Path,
+        help=(
+            "openvdm.yaml whose vessel settings (OpenVDM 2.17) aren't asked for again (default "
+            f"{DEFAULT_OPENVDM_CONFIG}, when it exists)"
+        ),
     )
     site.add_argument("--force", action="store_true", help="overwrite an existing site TOML")
     site.set_defaults(handler=_site_config)

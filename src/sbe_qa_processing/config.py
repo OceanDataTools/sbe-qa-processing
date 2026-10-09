@@ -50,18 +50,25 @@ class Port:
 
 @dataclass
 class Extent:
-    """Cruise bounding box in decimal degrees (longitude east positive)"""
+    """Cruise bounding box in decimal degrees (longitude east positive). As in R2R's reports, a
+    box across the antimeridian has westernmost > easternmost (e.g. 178 to -178)
+    """
 
     westernmost: float
     easternmost: float
     southernmost: float
     northernmost: float
 
+    @property
+    def crosses_antimeridian(self) -> bool:
+        return self.westernmost > self.easternmost
+
     def contains(self, latitude: float, longitude: float) -> bool:
-        return (
-            self.southernmost <= latitude <= self.northernmost
-            and self.westernmost <= longitude <= self.easternmost
-        )
+        if not self.southernmost <= latitude <= self.northernmost:
+            return False
+        if self.crosses_antimeridian:
+            return longitude >= self.westernmost or longitude <= self.easternmost
+        return self.westernmost <= longitude <= self.easternmost
 
 
 @dataclass

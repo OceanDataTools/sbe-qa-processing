@@ -67,3 +67,49 @@ def test_labels_do_not_overlap(monkeypatch):
         for b in boxes[i + 1 :]:
             assert not a.overlaps(b)
     plt.close(figure)
+
+
+def test_clipped_geometries_across_the_antimeridian(monkeypatch):
+    from shapely.geometry import box
+
+    requested = []
+
+    class Feature:
+        def intersecting_geometries(self, extent):
+            requested.append(extent)
+            return [box(-180, -20, 180, -15)]  # a band around the world
+
+    monkeypatch.setattr(maps, "_feature", lambda *a: Feature())
+    # 178 to 182 east, drawn around 180: each side of 180 is looked up on its own
+    pieces = maps.clipped_geometries("physical", "land", "10m", (178, 182, -18, -16), 180)
+    assert sorted(requested) == [(-180.0, -178.0, -18, -16), (178.0, 180.0, -18, -16)]
+    bounds = sorted(piece.bounds for piece in pieces)
+    assert np.allclose(bounds, [(-2, -18, 0, -16), (0, -18, 2, -16)])
+
+
+def test_map_across_the_antimeridian(monkeypatch):
+    monkeypatch.setattr(maps, "_feature", lambda *a: (_ for _ in ()).throw(OSError("offline")))
+    fiji = CruiseConfig(
+        cruise_id="TEST",
+        depart_date=__import__("datetime").date(2026, 7, 9),
+        arrive_date=__import__("datetime").date(2026, 7, 9),
+        extent=Extent(179.0, -179.5, -17.5, -16.5),
+    )
+
+    def cast(name, latitude, longitude):
+        return CastData(
+            cast=Cast(name), latitude=np.array([latitude]), longitude=np.array([longitude])
+        )
+
+    stations = [cast("EAST", -17.0, -179.8), cast("WEST", -17.2, 179.6), cast("FAR", -17.0, 175.0)]
+    figure = plots.cast_map(stations, fiji)
+    axis = figure.axes[0]
+    # The view spans 180 rather than the whole globe
+    west, east, _, _ = axis.get_extent(crs=plots.ccrs.PlateCarree(central_longitude=180))
+    assert -10 < west < east < 10
+    (box,) = [p for p in axis.patches if p.get_label() == "cruise extent"]
+    assert box.get_width() == 1.5
+    # Casts on both sides of 180 are inside the extent; FAR is outside
+    colors = [tuple(c.get_facecolor()[0]) for c in axis.collections]
+    assert len(set(colors)) == 2 and colors[0] == colors[1] != colors[2]
+    plt.close(figure)

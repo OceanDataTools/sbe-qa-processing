@@ -212,8 +212,18 @@ def _site_config(args: argparse.Namespace) -> int:
         return 1
     # OpenVDM 2.17's vessel settings win over the site config's, so they aren't asked for
     openvdm_yaml = args.openvdm_config
+    if openvdm_yaml is not None and not openvdm_yaml.exists():
+        raise OpenVDMError(f"no openvdm.yaml at {openvdm_yaml}; check --openvdm-config")
     if openvdm_yaml is None and DEFAULT_OPENVDM_CONFIG.exists():
         openvdm_yaml = DEFAULT_OPENVDM_CONFIG
+    elif openvdm_yaml is None:
+        # Not an error: the site TOML may be written away from the OpenVDM server
+        print(
+            f"No openvdm.yaml at {DEFAULT_OPENVDM_CONFIG}; asking for every field. If OpenVDM "
+            "2.17 is installed elsewhere, use --openvdm-config so its vessel settings aren't "
+            "asked for.\n",
+            file=sys.stderr,
+        )
     from_openvdm = {}
     if openvdm_yaml is not None:
         from_openvdm = vessel_settings(load_openvdm_yaml(openvdm_yaml).get("vessel"), "").settings

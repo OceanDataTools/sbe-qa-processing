@@ -9,9 +9,9 @@ import tomllib
 import pytest
 from conftest import FIXTURES
 
-from sbe_qa_processing import config as config_module
 from sbe_qa_processing.cli import build_parser, main
-from sbe_qa_processing.r2r_download import extract_bag
+from sbe_qa_processing.integrations.r2r import catalog
+from sbe_qa_processing.integrations.r2r.download import extract_bag
 
 QA_XML = str(FIXTURES / "SP2613_169847_r2r_qa.2.0.xml")
 
@@ -44,14 +44,20 @@ def r2r_api(monkeypatch):
         # R2R answers "not found" with a 204 status in the body
         return io.BytesIO(json.dumps({"data": data}).encode())
 
-    monkeypatch.setattr(config_module.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(catalog.urllib.request, "urlopen", urlopen)
     return requested
 
 
-def subcommands() -> dict[str, argparse.ArgumentParser]:
-    parser = build_parser()
-    action = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
-    return dict(action.choices)
+def subcommands(parser=None, prefix="") -> dict[str, argparse.ArgumentParser]:
+    """Every command, by its full name (e.g. "r2r run"), command groups included"""
+    parser = parser or build_parser()
+    found = {}
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for name, command in action.choices.items():
+                found[prefix + name] = command
+                found |= subcommands(command, f"{prefix}{name} ")
+    return found
 
 
 def test_every_argument_is_documented():
@@ -59,12 +65,14 @@ def test_every_argument_is_documented():
     assert set(commands) == {
         "run",
         "openvdm",
-        "config-from-r2r",
-        "config-from-r2r-qa",
         "config-from-openvdm",
         "site-config",
-        "fetch-fileset",
         "fetch-map-data",
+        "r2r",
+        "r2r run",
+        "r2r config-from-catalog",
+        "r2r config-from-qa",
+        "r2r fetch-fileset",
     }
     for name, parser in commands.items():
         assert parser.description, name
@@ -84,43 +92,43 @@ def test_every_argument_is_documented():
 
 def test_fileset_ids_are_integers(capsys):
     with pytest.raises(SystemExit):
-        main(["config-from-r2r", "SP2613", "abc"])
+        main(["r2r", "config-from-catalog", "SP2613", "abc"])
     assert "not an R2R fileset ID" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         main(["config-from-openvdm", "--fileset-id", "16984x"])
 
 
 def test_run_refuses_to_replace_reports(tmp_path, capsys):
-    main(["config-from-r2r-qa", QA_XML, "-o", str(tmp_path)])
+    main(["r2r", "config-from-qa", QA_XML, "-o", str(tmp_path)])
     output = tmp_path / "output"
     output.mkdir()
     (output / "SP2613_169847_qa_report.pdf").write_text("an earlier report")
     config = str(tmp_path / "SP2613.toml")
-    args = ["run", str(tmp_path / "empty"), "-c", config, "-o", str(output)]
+    args = ["r2r", "run", config, str(tmp_path / "empty"), "-o", str(output)]
     assert main(args) == 1
     assert "use --force" in capsys.readouterr().err
     assert (output / "SP2613_169847_qa_report.pdf").read_text() == "an earlier report"
 
 
 def test_config_from_r2r_qa_output(tmp_path, capsys):
-    assert main(["config-from-r2r-qa", QA_XML, "-o", "-"]) == 0
+    assert main(["r2r", "config-from-qa", QA_XML, "-o", "-"]) == 0
     assert tomllib.loads(capsys.readouterr().out)["cruise"]["id"] == "SP2613"
-    assert main(["config-from-r2r-qa", QA_XML, "-o", str(tmp_path)]) == 0
-    assert main(["config-from-r2r-qa", QA_XML, "-o", str(tmp_path)]) == 1
+    assert main(["r2r", "config-from-qa", QA_XML, "-o", str(tmp_path)]) == 0
+    assert main(["r2r", "config-from-qa", QA_XML, "-o", str(tmp_path)]) == 1
     assert "use --force" in capsys.readouterr().err
-    assert main(["config-from-r2r-qa", QA_XML, "-o", str(tmp_path), "--force"]) == 0
+    assert main(["r2r", "config-from-qa", QA_XML, "-o", str(tmp_path), "--force"]) == 0
 
 
 def test_config_from_r2r(tmp_path, capsys, r2r_api):
-    assert main(["config-from-r2r", "SP2613", "169847", "-o", "-"]) == 0
+    assert main(["r2r", "config-from-catalog", "SP2613", "169847", "-o", "-"]) == 0
     captured = capsys.readouterr()
     config = tomllib.loads(captured.out)
     assert (config["cruise"]["vessel_id"], config["fileset"]["id"]) == ("32QU", "169847")
     assert "no navigation bounding box" in captured.err
 
-    assert main(["config-from-r2r", "SP2613", "169847", "-o", str(tmp_path)]) == 0
+    assert main(["r2r", "config-from-catalog", "SP2613", "169847", "-o", str(tmp_path)]) == 0
     requested = len(r2r_api)
-    assert main(["config-from-r2r", "SP2613", "169847", "-o", str(tmp_path)]) == 1
+    assert main(["r2r", "config-from-catalog", "SP2613", "169847", "-o", str(tmp_path)]) == 1
     assert len(r2r_api) == requested  # refused before asking R2R
     assert "use --force" in capsys.readouterr().err
 
@@ -134,16 +142,16 @@ def test_config_from_r2r(tmp_path, capsys, r2r_api):
     ],
 )
 def test_config_from_r2r_explains_catalog_problems(cruise, fileset, problem, capsys, r2r_api):
-    assert main(["config-from-r2r", cruise, fileset, "-o", "-"]) == 1
+    assert main(["r2r", "config-from-catalog", cruise, fileset, "-o", "-"]) == 1
     assert problem in capsys.readouterr().err
 
 
 def test_fetch_fileset(tmp_path, capsys, r2r_api):
-    assert main(["fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 1
+    assert main(["r2r", "fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 1
     assert "isn't released for download" in capsys.readouterr().err  # no download_url
     (tmp_path / "SP2613_169847_ctd").mkdir()
     requested = len(r2r_api)
-    assert main(["fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 1
+    assert main(["r2r", "fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 1
     assert len(r2r_api) == requested
     assert "use --force" in capsys.readouterr().err
 

@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 It runs from the CLI or as an OpenVDM post-transfer hook.
 
-The R2R XML is a parity target. `tests/test_r2r_comparison.py` requires its `certificate` and manifest to be **identical** to R2R's own reports for released filesets. Treat changes to `r2r.py`, `xml_report.py`, or anything feeding them as behavior changes.
+The R2R XML is a parity target. `tests/test_r2r_comparison.py` requires its `certificate` and manifest to be **identical** to R2R's own reports for released filesets. Treat changes to `integrations/r2r/rules.py`, `integrations/r2r/xml_report.py`, or anything feeding them as behavior changes.
 
 ## Commands
 
@@ -23,11 +23,12 @@ Use uv. Run from the repo root.
 - One test: `uv run pytest tests/test_status.py::test_name`
 - Lint and format: `uv run ruff check .` and `uv run ruff format --check .` (line length 99).
 - Fetch the R2R validation filesets into `data/`. Without them, `test_r2r_comparison.py` and parts of `test_openvdm.py` skip, and the skip message names the command:
-  `uv run sbe-qa-processing fetch-fileset SP2613 169847`, plus the same for `RR2605 170644` and `BH18-18 132368`.
+  `uv run sbe-qa-processing r2r fetch-fileset SP2613 169847`, plus the same for `RR2605 170644` and `BH18-18 132368`.
 - Natural Earth map data for offline use: `uv run sbe-qa-processing fetch-map-data`. The tests monkeypatch the map layers, so they don't need it.
-- Run on a fileset: `uv run sbe-qa-processing run data/SP2613_169847_ctd [-c configs/SP2613.toml] -o output/SP2613 [--force] [--execute-notebook]`. Without `-c`, the reports are titled after the fileset directory and there are no R2R results.
-- Make a cruise TOML from R2R's catalog API: `uv run sbe-qa-processing config-from-r2r CRUISE_ID FILESET_ID [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`. It uses `config.config_from_r2r_catalog`. The API has no port coordinates, country or state.
-- Make a cruise TOML from an R2R QA XML: `uv run sbe-qa-processing config-from-r2r-qa data/<...>/r2r_qa.2.0.xml [-o configs|-] [--force]`
+- Run on a fileset: `uv run sbe-qa-processing run data/SP2613_169847_ctd [-c configs/SP2613.toml] -o output/SP2613 [--force] [--execute-notebook]`. Without `-c`, the reports are titled after the fileset directory.
+- Run with R2R's tests and XML: `uv run sbe-qa-processing r2r run configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--force] [--execute-notebook]`
+- Make a cruise TOML from R2R's catalog API: `uv run sbe-qa-processing r2r config-from-catalog CRUISE_ID FILESET_ID [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`. It uses `integrations.r2r.catalog.config_from_r2r_catalog`. The API has no port coordinates, country or state.
+- Make a cruise TOML from an R2R QA XML: `uv run sbe-qa-processing r2r config-from-qa data/<...>/r2r_qa.2.0.xml [-o configs|-] [--force]`
 - Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [--from-r2r CRUISE] [-o configs/site.toml] [--force]`
 - Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL --site-config site.toml [--fileset-id N] [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`.
 
@@ -48,7 +49,7 @@ Use uv. Run from the repo root.
 
 ## Architecture
 
-All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is the pipeline. It returns a `QAResult`, which every writer consumes. `QAResult.r2r` is `None` unless the config is a `CruiseConfig`, and the writers then leave out the R2R XML and certificate.
+All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is the core pipeline. It returns a `QAResult`, which every writer consumes, and `reports.write_reports` writes the core reports. Integrations live in `integrations/` and build on the core; **core modules never import them** (`tests/test_boundaries.py`). An integration adds PDF pages (`write_pdf`'s `front`) and notebook cells (`notebook.NotebookExtras`) instead of core knowing about it.
 
 1. **`fileset.py`** finds casts in a bag or directory by grouping `.hex/.dat`, `.XMLCON/.con`, `.hdr` and `.bl` files by their case-insensitive path without suffix. It also reads `manifest-md5.txt`. Cast names matching `deck|dock|test` are deck tests. R2R excludes them from the NAV tests, and the science checks skip them.
 2. **`xmlcon.py`** parses `.XMLCON` into seabirdscientific coefficient dataclasses (seabirdscientific has no XMLCON reader). **`hdr.py`** parses `.hdr` headers.
@@ -57,18 +58,23 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
    - Failures go into `errors` (`"xmlcon"`, `"hex"`, `"conversion"`) instead of raising, so one bad cast never stops a fileset.
    - Salinity uses `gsw.SP_from_C`.
 4. **`status.py`** decodes the 911plus status bits: pump, bottom contact, bottle confirm, modem.
-5. **`integrity.py`** holds the integrity checks (raw files, checksums, positions, cast times, serial numbers) for any fileset, per cast and summarized for the fileset, as `CheckResult`s. Its per-cast predicates (`cast_position`, `same_serial`, `verify_manifest`, ...) are shared with `r2r.py`. **`r2r.py`** holds the R2R tests and infos and the G/Y/R/N/X ratings.
-   - R2R rules that aren't documented upstream were inferred, and they're documented in the module docstring.
-   - Changing them breaks parity.
+5. **`integrity.py`** holds the integrity checks (raw files, checksums, positions, cast times, serial numbers) for any fileset, per cast and summarized for the fileset, as `CheckResult`s. Its per-cast predicates (`cast_position`, `same_serial`, `verify_manifest`, ...) are shared with R2R's `integrations/r2r/rules.py`.
 6. **`science.py`** holds the science checks (`CheckResult` with pass/warn/fail/info/n/a), with limits in `config.Thresholds`. **`loadout.py`** builds the sensor/channel tables. **`bottles.py`** parses `.bl` bottle logs.
-7. **`config.py`** handles the config TOML: `QAConfig` (core, every field optional) and `CruiseConfig(QAConfig)` (R2R's IDs, ports, provenance and `yellow_minimum_percent`, with the cruise ID and dates required), plus `Extent`, `Thresholds`, `Port`, `config_toml_from_r2r_qa`, `config_from_r2r_api` and `config_from_r2r_catalog`. R2R's XML identifies the vessel by its ICES code, which the API calls `vessel_ices_code`; the API's own `vessel_id` field holds the vessel's name. **`openvdm.py`** builds a `CruiseConfig` from OpenVDM's `api/warehouse/getCruiseConfig` (including `cruiseExtent`, from OpenVDM 2.17), OpenVDM 2.17's `vessel` block and an optional site TOML. The vessel block comes from `openvdm.yaml`, or from the cruise's `ovdmConfig.json` when the hook only has `--site-root`. OpenVDM's values win over the site TOML's, field by field. It also handles the hook's skip, chown and pending-checksum logic, and queues the reports for OpenVDM's MD5 summary by running OpenVDM's own `utils/update_md5_summary.py` with OpenVDM's Python (`queue_md5_update`), since this project can't import OpenVDM. `openvdm.resolve` and `cruise_toml` are shared by the hook's snapshot and `config-from-openvdm`, and `HookRun.notes` lists what the config is missing or assumed. **`site_setup.py`** holds `site-config`'s prompts and the `--from-r2r` pre-fill.
+7. **`config.py`** handles the core config TOML: `QAConfig` (every field optional; tables only integrations use are ignored), `Extent` and `Thresholds`. **`openvdm.py`** builds a `CruiseConfig` from OpenVDM's `api/warehouse/getCruiseConfig` (including `cruiseExtent`, from OpenVDM 2.17), OpenVDM 2.17's `vessel` block and an optional site TOML. The vessel block comes from `openvdm.yaml`, or from the cruise's `ovdmConfig.json` when the hook only has `--site-root`. OpenVDM's values win over the site TOML's, field by field. It also handles the hook's skip, chown and pending-checksum logic, and queues the reports for OpenVDM's MD5 summary by running OpenVDM's own `utils/update_md5_summary.py` with OpenVDM's Python (`queue_md5_update`), since this project can't import OpenVDM. `openvdm.resolve` and `cruise_toml` are shared by the hook's snapshot and `config-from-openvdm`, and `HookRun.notes` lists what the config is missing or assumed. **`site_setup.py`** holds `site-config`'s prompts and the `--from-r2r` pre-fill.
 8. **Writers:**
-   - `xml_report.py` writes the R2R schema with its stylesheet reference.
    - `pdf_report.py` uses ReportLab and embeds the SVGs as vectors via svglib.
    - `plots.py` has one matplotlib Figure per function, shared by the PDF and the notebook.
    - `maps.py` loads Natural Earth via cartopy, clipped to the view, and degrades to no coastlines when the data can't load.
    - `notebook.py` writes a notebook (nbformat) whose cells import this package.
-9. **`cli.py`** provides every command as a subcommand: `run`, `openvdm`, `config-from-r2r`, `config-from-r2r-qa`, `config-from-openvdm`, `site-config`, `fetch-fileset` (code in `r2r_download.py`) and `fetch-map-data`. Its module docstring states the argument conventions (`-o/--output`, `-o -`, `--force`, integer fileset IDs, uppercase metavars), and `tests/test_cli.py` checks them for every command. The `openvdm` hook's arguments are called from installed `openvdm.yaml` files, so don't rename them. It forces the matplotlib `Agg` backend. In `openvdm` mode, exceptions become a one-line stderr message and exit 1, because OpenVDM displays it.
+9. **`integrations/r2r/`** is R2R:
+   - `config.py`: `CruiseConfig(QAConfig)` (R2R's IDs, ports, provenance and `yellow_minimum_percent`, with the cruise ID and dates required), `load_cruise_config` and `config_to_toml`;
+   - `catalog.py`: configs from R2R's catalog API and QA XML. R2R's XML identifies the vessel by its ICES code, which the API calls `vessel_ices_code`; the API's own `vessel_id` field holds the vessel's name;
+   - `rules.py`: the R2R tests and infos and the G/Y/R/N/X ratings. R2R rules that aren't documented upstream were inferred and are documented in its docstring; changing them breaks parity;
+   - `xml_report.py`: the R2R schema with its stylesheet reference;
+   - `certificate.py`: the certificate's PDF pages and notebook cells;
+   - `reports.py`: `run_r2r` and `write_r2r_reports`;
+   - `download.py`: `r2r fetch-fileset`.
+10. **`cli.py`** provides every command as a subcommand: `run`, `openvdm`, `config-from-openvdm`, `site-config`, `fetch-map-data`, and the `r2r` group (`r2r run`, `r2r config-from-catalog`, `r2r config-from-qa`, `r2r fetch-fileset`). Until issue 21, the `openvdm` hook writes R2R's reports through `integrations/r2r`. Its module docstring states the argument conventions (`-o/--output`, `-o -`, `--force`, integer fileset IDs, uppercase metavars), and `tests/test_cli.py` checks them for every command. The `openvdm` hook's arguments are called from installed `openvdm.yaml` files, so don't rename them. It forces the matplotlib `Agg` backend. In `openvdm` mode, exceptions become a one-line stderr message and exit 1, because OpenVDM displays it.
 
 ## Conventions
 

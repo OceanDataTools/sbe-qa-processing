@@ -8,6 +8,7 @@ Conventions shared by every command:
 - Fileset IDs are integers. ``fileset`` alone never means an ID: the directory is FILESET_DIR.
 - The openvdm hook's arguments are called from installed ``openvdm.yaml`` files, so they keep
   their names and behavior.
+- An integration's commands are a group named after it (``r2r ...``).
 """
 
 import argparse
@@ -18,65 +19,26 @@ import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sbe_qa_processing.config import R2RError
+from sbe_qa_processing.integrations.r2r.catalog import R2RError
 from sbe_qa_processing.openvdm import DEFAULT_OPENVDM_CONFIG, OpenVDMError
 
 logger = logging.getLogger(__name__)
 STDOUT = "-"
 
 
-def _write_reports(result, output: Path, execute_notebook: bool) -> list[Path]:
-    """The PDF (with its SVG plots) and notebook for a QA result, in output, and the R2R XML
-    when there are R2R results
-    """
-    from sbe_qa_processing.notebook import write_notebook
-    from sbe_qa_processing.pdf_report import write_pdf
-    from sbe_qa_processing.xml_report import write_qa_xml
-
-    output.mkdir(parents=True, exist_ok=True)
-    paths = _report_paths(output, result.config.identifier)
-    xml = [write_qa_xml(result, paths["xml"])] if result.r2r is not None else []
-    return [
-        *xml,
-        write_pdf(result, paths["pdf"], paths["plots"]),
-        paths["plots"],
-        write_notebook(result, paths["notebook"], output, execute=execute_notebook),
-    ]
-
-
-def _report_paths(output: Path, identifier: str) -> dict[str, Path]:
-    return {
-        "xml": output / f"{identifier}_qa.2.0.xml",
-        "pdf": output / f"{identifier}_qa_report.pdf",
-        "plots": output / f"{identifier}_plots",
-        "notebook": output / f"{identifier}_qa.ipynb",
-    }
-
-
-def _summarize(result, written: list[Path]) -> None:
-    if result.r2r is None:
-        print(f"{result.config.identifier}: {len(result.casts)} casts")
-    else:
-        print(f"{result.config.identifier}: R2R rating {result.r2r.rating}")
-        for test in result.r2r.tests:
-            failures = f"  ({', '.join(test.failures)})" if test.failures else ""
-            print(f"  {test.rating}  {test.name}{failures}")
-    integrity = [c for c in result.integrity.fileset if c.status in ("warn", "fail")]
-    print(f"  integrity checks: {len(integrity)} warnings/failures")
-    for check in integrity:
-        detail = f": {check.detail}" if check.detail else ""
-        print(f"    {check.name} {check.status} ({check.value}){detail}")
-    problems = [
-        f"{cast}: {check.name} {check.status} ({check.value})"
-        for cast, checks in result.science.items()
-        for check in checks
-        if check.status in ("warn", "fail")
-    ]
-    print(f"  science checks: {len(problems)} warnings/failures")
-    for problem in problems:
-        print(f"    {problem}")
+def _print_summary(lines: list[str], written: list[Path]) -> None:
+    for line in lines:
+        print(line)
     for path in written:
         print(f"wrote {path}")
+
+
+def _refuse_existing_reports(paths: dict[str, Path], force: bool) -> bool:
+    existing = [path for path in paths.values() if path.exists()]
+    if existing and not force:
+        print(f"{existing[0]} exists; use --force to overwrite the reports", file=sys.stderr)
+        return True
+    return False
 
 
 def _refuse_overwrite(path: Path, force: bool) -> bool:
@@ -111,15 +73,29 @@ def _write_cruise_toml(text: str, cruise_id: str, args: argparse.Namespace) -> i
 
 
 def _run(args: argparse.Namespace) -> int:
+    from sbe_qa_processing import reports
     from sbe_qa_processing.qa import resolve_config, run_qa
 
     config = resolve_config(args.config, args.fileset_dir)
-    existing = [p for p in _report_paths(args.output, config.identifier).values() if p.exists()]
-    if existing and not args.force:
-        print(f"{existing[0]} exists; use --force to overwrite the reports", file=sys.stderr)
+    if _refuse_existing_reports(reports.report_paths(args.output, config.identifier), args.force):
         return 1
     result = run_qa(args.fileset_dir, args.config)
-    _summarize(result, _write_reports(result, args.output, args.execute_notebook))
+    written = reports.write_reports(result, args.output, args.execute_notebook)
+    lines = [f"{result.config.identifier}: {len(result.casts)} casts", *reports.summary(result)]
+    _print_summary(lines, written)
+    return 0
+
+
+def _r2r_run(args: argparse.Namespace) -> int:
+    from sbe_qa_processing.integrations.r2r import reports
+    from sbe_qa_processing.integrations.r2r.config import load_cruise_config
+
+    identifier = load_cruise_config(args.cruise_toml).identifier
+    if _refuse_existing_reports(reports.report_paths(args.output, identifier), args.force):
+        return 1
+    run = reports.run_r2r(args.fileset_dir, args.cruise_toml)
+    written = reports.write_r2r_reports(run, args.output, args.execute_notebook)
+    _print_summary(reports.summary(run), written)
     return 0
 
 
@@ -147,7 +123,7 @@ def _sources(run) -> str:
 
 def _openvdm(args: argparse.Namespace) -> int:
     from sbe_qa_processing import openvdm
-    from sbe_qa_processing.qa import run_qa
+    from sbe_qa_processing.integrations.r2r import reports
 
     if args.changed_files is not None and not openvdm.has_ctd_changes(args.changed_files):
         print(f"{args.transfer}: no new or updated CTD files; nothing to do")
@@ -165,10 +141,13 @@ def _openvdm(args: argparse.Namespace) -> int:
     # Snapshot what OpenVDM supplied, so the notebook can re-run exactly this assessment
     snapshot = run.output_dir / f"{run.config.identifier}_cruise.toml"
     snapshot.write_text(openvdm.cruise_toml(run, site_root))
-    result = run_qa(run.fileset_dir, snapshot)
-    written = [snapshot, *_write_reports(result, run.output_dir, args.execute_notebook)]
+    r2r_run = reports.run_r2r(run.fileset_dir, snapshot)
+    written = [
+        snapshot,
+        *reports.write_r2r_reports(r2r_run, run.output_dir, args.execute_notebook),
+    ]
     openvdm.chown_tree(run.output_dir, run.owner)
-    _summarize(result, written)
+    _print_summary(reports.summary(r2r_run), written)
     _queue_md5_update(args, run, written)
     return 0
 
@@ -188,8 +167,9 @@ def _queue_md5_update(args: argparse.Namespace, run, written: list[Path]) -> Non
         print(f"queued an MD5 summary update for the reports in {run.output_dir}")
 
 
-def _config_from_r2r(args: argparse.Namespace) -> int:
-    from sbe_qa_processing.config import config_from_r2r_catalog, config_to_toml
+def _r2r_config_from_catalog(args: argparse.Namespace) -> int:
+    from sbe_qa_processing.integrations.r2r.catalog import config_from_r2r_catalog
+    from sbe_qa_processing.integrations.r2r.config import config_to_toml
 
     destination = args.output / f"{args.cruise_id}.toml"
     if str(args.output) != STDOUT and _refuse_overwrite(destination, args.force):
@@ -207,8 +187,8 @@ def _config_from_r2r(args: argparse.Namespace) -> int:
     return _write_cruise_toml(text, config.cruise_id, args)
 
 
-def _config_from_r2r_qa(args: argparse.Namespace) -> int:
-    from sbe_qa_processing.config import config_toml_from_r2r_qa
+def _r2r_config_from_qa(args: argparse.Namespace) -> int:
+    from sbe_qa_processing.integrations.r2r.catalog import config_toml_from_r2r_qa
 
     text = config_toml_from_r2r_qa(args.r2r_qa_xml)
     return _write_cruise_toml(text, tomllib.loads(text)["cruise"]["id"], args)
@@ -225,7 +205,7 @@ def _config_from_openvdm(args: argparse.Namespace) -> int:
 
 
 def _site_config(args: argparse.Namespace) -> int:
-    from sbe_qa_processing.config import fetch_r2r_records
+    from sbe_qa_processing.integrations.r2r.catalog import fetch_r2r_records
     from sbe_qa_processing.openvdm import (
         SiteConfig,
         load_openvdm_yaml,
@@ -268,8 +248,8 @@ def _site_config(args: argparse.Namespace) -> int:
     return 0
 
 
-def _fetch_fileset(args: argparse.Namespace) -> int:
-    from sbe_qa_processing.r2r_download import download_fileset
+def _r2r_fetch_fileset(args: argparse.Namespace) -> int:
+    from sbe_qa_processing.integrations.r2r.download import download_fileset
 
     destination = args.output / f"{args.cruise_id}_{args.fileset_id}_ctd"
     if _refuse_overwrite(destination, args.force):
@@ -357,10 +337,111 @@ def _add_openvdm_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_report_output(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "-o",
+        "--output",
+        metavar="OUTPUT_DIR",
+        type=Path,
+        default=Path("output"),
+        help="directory for the reports (default %(default)s)",
+    )
+    parser.add_argument("--force", action="store_true", help="overwrite existing reports")
+    parser.add_argument(
+        "--execute-notebook", action="store_true", help="run the notebook and save its outputs"
+    )
+
+
+def _add_r2r_commands(commands) -> None:
+    group = commands.add_parser(
+        "r2r",
+        help="Rolling Deck to Repository: R2R's tests and QA XML, cruise configs, filesets",
+        description=(
+            "R2R's CTD tests, ratings and QA 2.0 XML, cruise TOMLs from R2R's catalog, and "
+            "downloads of released filesets."
+        ),
+    )
+    commands = group.add_subparsers(
+        dest="r2r_command", required=True, metavar="COMMAND", help="R2R command"
+    )
+
+    run = commands.add_parser(
+        "run",
+        help="assess a fileset with R2R's tests and write the reports and R2R QA XML",
+        description=(
+            "Assesses a fileset as `run` does, plus R2R's CTD tests. Writes the R2R QA 2.0 XML, "
+            "and the PDF (with R2R's certificate), SVG plots and notebook, named "
+            "<CRUISE_ID>_<FILESET_ID>."
+        ),
+    )
+    run.add_argument(
+        "cruise_toml",
+        metavar="CRUISE_TOML",
+        type=Path,
+        help="cruise TOML with R2R's IDs, e.g. from `r2r config-from-catalog`",
+    )
+    run.add_argument(
+        "fileset_dir", metavar="FILESET_DIR", type=Path, help="BagIt bag or directory of casts"
+    )
+    _add_report_output(run)
+    run.set_defaults(handler=_r2r_run)
+
+    from_catalog = commands.add_parser(
+        "config-from-catalog",
+        help="make a cruise TOML from R2R's catalog API",
+        description=(
+            "Writes a cruise TOML from R2R's catalog API: the cruise's name, vessel, operator, "
+            "dates, ports and navigation bounding box, checking that the fileset is one of its "
+            "CTD filesets. The API has no port coordinates, country or state; for those, and "
+            "for exact parity with an R2R QA report, use `r2r config-from-qa`."
+        ),
+    )
+    _add_r2r_ids(from_catalog)
+    _add_cruise_toml_output(from_catalog)
+    from_catalog.set_defaults(handler=_r2r_config_from_catalog)
+
+    from_qa = commands.add_parser(
+        "config-from-qa",
+        help="make a cruise TOML from an existing R2R QA 2.0 XML",
+        description=(
+            "Writes a cruise TOML from an R2R QA 2.0 report's fileset info, for checking this "
+            "tool's results against R2R's."
+        ),
+    )
+    from_qa.add_argument(
+        "r2r_qa_xml", metavar="R2R_QA_XML", type=Path, help="R2R's QA 2.0 XML for the fileset"
+    )
+    _add_cruise_toml_output(from_qa)
+    from_qa.set_defaults(handler=_r2r_config_from_qa)
+
+    fetch = commands.add_parser(
+        "fetch-fileset",
+        help="download a released R2R CTD fileset and R2R's QA report",
+        description=(
+            "Downloads a released R2R CTD fileset (a BagIt bag) into "
+            "<OUTPUT_DIR>/<CRUISE_ID>_<FILESET_ID>_ctd/, with R2R's QA report beside it as "
+            "r2r_qa.2.0.xml, e.g. for the validation tests."
+        ),
+    )
+    _add_r2r_ids(fetch)
+    fetch.add_argument(
+        "-o",
+        "--output",
+        metavar="OUTPUT_DIR",
+        type=Path,
+        default=Path("data"),
+        help="directory for the fileset's directory (default %(default)s)",
+    )
+    fetch.add_argument(
+        "--force", action="store_true", help="download into an existing fileset directory"
+    )
+    fetch.set_defaults(handler=_r2r_fetch_fileset)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sbe-qa-processing",
-        description="QA reports (PDF, notebook, R2R QA 2.0 XML) for SBE 9/911plus CTD filesets",
+        description="QA reports (PDF, notebook) for SBE 9/911plus CTD filesets",
     )
     commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
@@ -368,9 +449,8 @@ def build_parser() -> argparse.ArgumentParser:
         "run",
         help="assess a fileset and write the reports",
         description=(
-            "Assesses a fileset and writes the PDF, SVG plots and notebook. With a config that "
-            "has the cruise ID and dates R2R needs, it also runs R2R's tests and writes the R2R "
-            "QA XML."
+            "Assesses a fileset: integrity and science checks. Writes the PDF, SVG plots and "
+            "notebook. For R2R's tests and QA XML, use `r2r run`."
         ),
     )
     run.add_argument(
@@ -389,18 +469,7 @@ def build_parser() -> argparse.ArgumentParser:
             "one, the reports are titled after FILESET_DIR"
         ),
     )
-    run.add_argument(
-        "-o",
-        "--output",
-        metavar="OUTPUT_DIR",
-        type=Path,
-        default=Path("output"),
-        help="directory for the reports (default %(default)s)",
-    )
-    run.add_argument("--force", action="store_true", help="overwrite existing reports")
-    run.add_argument(
-        "--execute-notebook", action="store_true", help="run the notebook and save its outputs"
-    )
+    _add_report_output(run)
     run.set_defaults(handler=_run)
 
     hook = commands.add_parser(
@@ -429,40 +498,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hook.set_defaults(handler=_openvdm)
 
-    from_r2r = commands.add_parser(
-        "config-from-r2r",
-        help="make a cruise TOML from R2R's catalog API",
-        description=(
-            "Writes a cruise TOML from R2R's catalog API: the cruise's name, vessel, operator, "
-            "dates, ports and navigation bounding box, checking that the fileset is one of its "
-            "CTD filesets. The API has no port coordinates, country or state; for those, and "
-            "for exact parity with an R2R QA report, use config-from-r2r-qa."
-        ),
-    )
-    _add_r2r_ids(from_r2r)
-    _add_cruise_toml_output(from_r2r)
-    from_r2r.set_defaults(handler=_config_from_r2r)
-
-    from_qa = commands.add_parser(
-        "config-from-r2r-qa",
-        help="make a cruise TOML from an existing R2R QA 2.0 XML",
-        description=(
-            "Writes a cruise TOML from an R2R QA 2.0 report's fileset info, for checking this "
-            "tool's results against R2R's."
-        ),
-    )
-    from_qa.add_argument(
-        "r2r_qa_xml", metavar="R2R_QA_XML", type=Path, help="R2R's QA 2.0 XML for the fileset"
-    )
-    _add_cruise_toml_output(from_qa)
-    from_qa.set_defaults(handler=_config_from_r2r_qa)
-
     from_openvdm = commands.add_parser(
         "config-from-openvdm",
         help="make a cruise TOML from OpenVDM's current cruise, without running the QA",
         description=(
             "Merges OpenVDM's current cruise with the site config, as the openvdm hook does, "
-            "and writes the cruise TOML for review and `run`. Reports what's missing or assumed."
+            "and writes the cruise TOML for review and `r2r run`. Reports what's missing or assumed."
         ),
     )
     _add_openvdm_arguments(from_openvdm)
@@ -508,28 +549,7 @@ def build_parser() -> argparse.ArgumentParser:
     site.add_argument("--force", action="store_true", help="overwrite an existing site TOML")
     site.set_defaults(handler=_site_config)
 
-    fetch = commands.add_parser(
-        "fetch-fileset",
-        help="download a released R2R CTD fileset and R2R's QA report",
-        description=(
-            "Downloads a released R2R CTD fileset (a BagIt bag) into "
-            "<OUTPUT_DIR>/<CRUISE_ID>_<FILESET_ID>_ctd/, with R2R's QA report beside it as "
-            "r2r_qa.2.0.xml, e.g. for the validation tests."
-        ),
-    )
-    _add_r2r_ids(fetch)
-    fetch.add_argument(
-        "-o",
-        "--output",
-        metavar="OUTPUT_DIR",
-        type=Path,
-        default=Path("data"),
-        help="directory for the fileset's directory (default %(default)s)",
-    )
-    fetch.add_argument(
-        "--force", action="store_true", help="download into an existing fileset directory"
-    )
-    fetch.set_defaults(handler=_fetch_fileset)
+    _add_r2r_commands(commands)
 
     maps = commands.add_parser(
         "fetch-map-data",

@@ -16,7 +16,7 @@ import numpy as np
 
 from sbe_qa_processing.bottles import parse_bottle_log
 from sbe_qa_processing.cast import CastData
-from sbe_qa_processing.config import CruiseConfig, Extent
+from sbe_qa_processing.config import Extent, QAConfig
 from sbe_qa_processing.fileset import Cast, Fileset, md5sum
 from sbe_qa_processing.science import FAIL, INFO, NA, PASS, WARN, CheckResult
 
@@ -94,6 +94,12 @@ def verify_manifest(fileset: Fileset) -> tuple[list[str], list[str]]:
 # Per-cast checks
 
 
+def valid_position(latitude: float, longitude: float) -> bool:
+    """In range, and not 0,0 (a blank NMEA position)"""
+    in_range = -90 <= latitude <= 90 and -180 <= longitude <= 180
+    return in_range and not latitude == longitude == 0
+
+
 def raw_files_check(cast: Cast) -> CheckResult:
     name = "Raw files complete"
     files = ((".hex/.dat", cast.raw), (".XMLCON/.con", cast.config), (".hdr", cast.header))
@@ -123,7 +129,7 @@ def position_check(data: CastData) -> CheckResult:
     value = f"{latitude:.4f}, {longitude:.4f}"
     header = data.header
     from_header = header is not None and header.latitude is not None
-    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180) or latitude == longitude == 0:
+    if not valid_position(latitude, longitude):
         return CheckResult(name, FAIL, value, detail="not a valid position")
     return CheckResult(name, PASS, value, detail="header" if from_header else "first valid scan")
 
@@ -145,12 +151,12 @@ def _extent_text(extent: Extent) -> str:
     )
 
 
-def area_check(data: CastData, config: CruiseConfig) -> CheckResult:
+def area_check(data: CastData, config: QAConfig) -> CheckResult:
     name = "Position inside the expected area"
-    if data.cast.is_deck_test:
-        return CheckResult(name, NA, "deck test")
     if config.extent is None:
         return CheckResult(name, NA, "no expected area in the config")
+    if data.cast.is_deck_test:
+        return CheckResult(name, NA, "deck test")
     position = cast_position(data)
     if position is None:
         return CheckResult(name, NA, "no position")
@@ -180,12 +186,12 @@ def time_check(data: CastData, now: datetime) -> CheckResult:
     return CheckResult(name, PASS, value, detail=source)
 
 
-def dates_check(data: CastData, config: CruiseConfig) -> CheckResult:
+def dates_check(data: CastData, config: QAConfig) -> CheckResult:
     name = "Cast time inside the expected dates"
-    if data.cast.is_deck_test:
-        return CheckResult(name, NA, "deck test")
     if config.depart_date is None or config.arrive_date is None:
         return CheckResult(name, NA, "no expected dates in the config")
+    if data.cast.is_deck_test:
+        return CheckResult(name, NA, "deck test")
     time = data.header.cast_time if data.header is not None else None
     if time is None:
         return CheckResult(name, NA, "no cast time")
@@ -228,7 +234,7 @@ def serial_check(data: CastData) -> CheckResult:
     return CheckResult(name, PASS, ", ".join(matched))
 
 
-def run_cast_checks(data: CastData, config: CruiseConfig, now: datetime) -> list[CheckResult]:
+def run_cast_checks(data: CastData, config: QAConfig, now: datetime) -> list[CheckResult]:
     return [
         raw_files_check(data.cast),
         readable_check(data),
@@ -311,6 +317,54 @@ def summarize(name: str, results: dict[str, CheckResult]) -> CheckResult:
     )
 
 
+def bounding_extent(positions: list[tuple[float, float]]) -> Extent | None:
+    """The smallest box around (latitude, longitude) positions; across the antimeridian
+    (westernmost > easternmost) when that's smaller
+    """
+    if not positions:
+        return None
+    latitudes = [latitude for latitude, _ in positions]
+    longitudes = sorted(longitude for _, longitude in positions)
+    # Leave out the widest gap between neighbouring longitudes, around the globe
+    n = len(longitudes)
+    gaps = [(longitudes[(i + 1) % n] - longitudes[i]) % 360 for i in range(n)]
+    widest = max(range(n), key=gaps.__getitem__)
+    return Extent(
+        westernmost=longitudes[(widest + 1) % n],
+        easternmost=longitudes[widest],
+        southernmost=min(latitudes),
+        northernmost=max(latitudes),
+    )
+
+
+def _coverage(casts: list[CastData], now: datetime) -> list[CheckResult]:
+    """When and where the casts were, from their valid positions and plausible times. Deck
+    tests are left out
+    """
+    stations = [data for data in casts if not data.cast.is_deck_test]
+    times = sorted(
+        time
+        for data in stations
+        if data.header is not None
+        and (time := data.header.cast_time) is not None
+        and EARLIEST_CAST_TIME <= time <= now
+    )
+    positions = [
+        position
+        for data in stations
+        if (position := cast_position(data)) is not None and valid_position(*position)
+    ]
+    extent = bounding_extent(positions)
+    return [
+        CheckResult(
+            "Cast times",
+            INFO,
+            f"{times[0]:%Y-%m-%d %H:%M} to {times[-1]:%Y-%m-%d %H:%M} UTC" if times else "none",
+        ),
+        CheckResult("Cast positions", INFO, _extent_text(extent) if extent else "none"),
+    ]
+
+
 def _infos(casts: list[CastData]) -> list[CheckResult]:
     deck_tests = [d.name for d in casts if d.cast.is_deck_test]
     with_bottles = [d.name for d in casts if d.cast.raw is not None and bottles_fired(d.cast)]
@@ -329,7 +383,7 @@ def _infos(casts: list[CastData]) -> list[CheckResult]:
 
 
 def run_integrity_checks(
-    fileset: Fileset, casts: list[CastData], config: CruiseConfig, now: datetime | None = None
+    fileset: Fileset, casts: list[CastData], config: QAConfig, now: datetime | None = None
 ) -> IntegrityResult:
     """Checks for every cast (configuration-only entries aren't casts) and for the fileset"""
     now = now or datetime.now(UTC)
@@ -340,6 +394,12 @@ def run_integrity_checks(
         for i, name in enumerate(names)
     ]
     return IntegrityResult(
-        fileset=[checksum_check(fileset), *summaries, order_check(casts), *_infos(casts)],
+        fileset=[
+            checksum_check(fileset),
+            *summaries,
+            order_check(casts),
+            *_coverage(casts, now),
+            *_infos(casts),
+        ],
         casts=per_cast,
     )

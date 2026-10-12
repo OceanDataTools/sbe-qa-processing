@@ -21,7 +21,10 @@ def canonical(element) -> str:
 )
 def test_matches_r2r_report(tmp_path, name, cruise):
     fileset = r2r_fileset(name)
-    assert main(["run", str(CONFIGS / f"{cruise}.toml"), str(fileset), "-o", str(tmp_path)]) == 0
+    assert (
+        main(["run", str(fileset), "-c", str(CONFIGS / f"{cruise}.toml"), "-o", str(tmp_path)])
+        == 0
+    )
     identifier = name.removesuffix("_ctd")
     ours = ET.parse(tmp_path / f"{identifier}_qa.2.0.xml").getroot()
     reference = ET.parse(fileset / "r2r_qa.2.0.xml").getroot()
@@ -51,7 +54,7 @@ def test_failure_paths_on_bh18_18(tmp_path):
     fileset = r2r_fileset("BH18-18_132368_ctd")
     from sbe_qa_processing.qa import run_qa
 
-    result = run_qa(CONFIGS / "BH18-18.toml", fileset)
+    result = run_qa(fileset, CONFIGS / "BH18-18.toml")
     tests = {t.name: t for t in result.r2r.tests}
     assert tests["Presence of All Raw Files"].rating == "R"
     assert tests["Presence of All Raw Files"].failures == ["05252018_ScienceOnDeck"]

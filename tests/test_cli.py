@@ -95,7 +95,8 @@ def test_run_refuses_to_replace_reports(tmp_path, capsys):
     output = tmp_path / "output"
     output.mkdir()
     (output / "SP2613_169847_qa_report.pdf").write_text("an earlier report")
-    args = ["run", str(tmp_path / "SP2613.toml"), str(tmp_path / "empty"), "-o", str(output)]
+    config = str(tmp_path / "SP2613.toml")
+    args = ["run", str(tmp_path / "empty"), "-c", config, "-o", str(output)]
     assert main(args) == 1
     assert "use --force" in capsys.readouterr().err
     assert (output / "SP2613_169847_qa_report.pdf").read_text() == "an earlier report"

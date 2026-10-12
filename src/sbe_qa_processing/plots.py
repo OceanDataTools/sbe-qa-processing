@@ -12,7 +12,7 @@ from seabirdscientific.contour import contour_from_t_s_p
 from sbe_qa_processing import maps
 from sbe_qa_processing.bottles import bottle_fires
 from sbe_qa_processing.cast import CastData
-from sbe_qa_processing.config import CruiseConfig
+from sbe_qa_processing.config import QAConfig
 from sbe_qa_processing.integrity import cast_position
 from sbe_qa_processing.science import downcast_slice
 
@@ -277,9 +277,9 @@ def _world_inset(figure: Figure, axis, corner: str, latitude: float, longitude: 
     inset.spines["geo"].set_edgecolor("0.5")
 
 
-def cast_map(casts: list[CastData], config: CruiseConfig) -> Figure:
-    """Cast positions over coastlines, against the cruise bounding box used by the NAV test,
-    with a world inset showing where the cruise was
+def cast_map(casts: list[CastData], config: QAConfig) -> Figure:
+    """Cast positions over coastlines, against the expected area when the config has one, with
+    a world inset showing where the casts were
     """
     extent = config.extent
     positions = [(c, cast_position(c)) for c in casts]
@@ -396,7 +396,9 @@ def cast_map(casts: list[CastData], config: CruiseConfig) -> Figure:
         axis.legend(fontsize=7, loc=legend_corner)
     _world_inset(figure, axis, corner, center_lat, central)
     axis.set_title(
-        "Cast positions (hollow squares are deck tests; red is outside the extent)", fontsize=10
+        "Cast positions (hollow squares are deck tests"
+        + ("; red is outside the extent)" if extent is not None else ")"),
+        fontsize=10,
     )
     _label_casts(figure, axis, ordered)
     return figure

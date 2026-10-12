@@ -6,18 +6,22 @@
 > validated beyond the R2R filesets listed under [Validation against R2R](#validation-against-r2r).
 > Don't rely on it for operational QA yet. Issues and comments are welcome.
 
-Quality assessment for Sea-Bird **SBE 9/911plus** CTD filesets. From a fileset (a BagIt bag as
-R2R/NCEI distribute it, or a plain directory of Seasave output) and an optional config, it
-writes the files below. Their names start with the config's cruise ID, or the fileset
-directory's name without one (`<TITLE>`). With R2R's tests (`r2r run`), they're named
-`<CRUISE>_<FILESET>`.
+Quality assessment for Sea-Bird **SBE 9/911plus** CTD casts. Point it at a directory of raw
+Seasave files (`.hex/.dat`, `.XMLCON/.con`, `.hdr`, `.bl`) or a BagIt bag, optionally with a
+small config, and it checks the files and the data and writes:
 
 | Output | Contents |
 |---|---|
-| `<TITLE>_qa_report.pdf` | R2R certificate (with `r2r run`); a cast map with coastlines and a world inset; and per cast: profiles, dual-sensor differences, TS diagram, pressure record, integrity and science checks and sensor loadout |
+| `<TITLE>_qa_report.pdf` | A cast map with coastlines and a world inset; the fileset's integrity checks; and per cast: profiles, dual-sensor differences, TS diagram, pressure record, integrity and science checks and sensor loadout |
 | `<TITLE>_plots/*.svg` | Every report figure as SVG: the cast map, and each cast's profiles, TS diagram and pressure record. The PDF embeds these same SVGs as vector graphics |
 | `<TITLE>_qa.ipynb` | A notebook that re-runs the whole assessment step by step, to inspect or change it |
-| `<CRUISE>_<FILESET>_qa.2.0.xml` | With `r2r run` only: the R2R QA 2.0 rollup report, with the same tests, infos, ratings and manifest R2R's `r2r-ctd` produces, in R2R's schema and with its stylesheet reference |
+
+`<TITLE>` is the config's cruise ID, or the fileset directory's name without one.
+
+Two optional integrations build on this:
+- **[R2R](#r2r)** (Rolling Deck to Repository) adds R2R's CTD tests, its rating and its QA 2.0
+  XML, identical to R2R's own reports.
+- **[OpenVDM](#openvdm)** runs the QA from a post-transfer hook on each cruise's CTD files.
 
 Raw `.hex` data is read and converted with
 [seabirdscientific](https://github.com/Sea-BirdScientific/seabirdscientific), installed from
@@ -32,7 +36,7 @@ Needs [uv](https://docs.astral.sh/uv/) (`brew install uv`) and git.
 ```bash
 git clone https://github.com/OceanDataTools/sbe-qa-processing.git
 cd sbe-qa-processing
-uv sync
+uv sync                                    # uv sync --extra openvdm for the OpenVDM hook
 uv run sbe-qa-processing fetch-map-data   # Natural Earth coastlines for the maps (~27 MB, once)
 ```
 
@@ -80,7 +84,43 @@ northernmost = 43.0
 salinity_range = [0.0, 42.0]
 ```
 
-### R2R
+Every command is listed by `sbe-qa-processing --help`, and documents its arguments under
+`sbe-qa-processing COMMAND --help`. They share these conventions:
+- `-o/--output` is a directory; only `site-config` writes a single file. Commands that make a
+  cruise TOML write `<OUTPUT_DIR>/<CRUISE_ID>.toml` (default `configs/`), or to stdout with
+  `-o -`.
+- Existing outputs, reports included, aren't overwritten without `--force`. The exception is
+  the `openvdm` hook, which replaces its reports after each transfer.
+
+## What it checks
+
+**Integrity checks** (PDF, notebook and the command's summary), for every cast, deck tests
+included, and summarized for the fileset:
+- Raw files complete (`.hex/.dat`, `.XMLCON/.con`, `.hdr`; `.bl` noted) and readable.
+- Checksums against the bag's `manifest-md5.txt` or the config's `[fileset] manifest`; n/a
+  without a manifest.
+- A valid NMEA position (not 0,0), and the position on every scan.
+- A cast time that isn't before 1990 (an unset clock) or in the future, and casts in time order
+  by file name.
+- Header temperature and conductivity serial numbers match the `.XMLCON`.
+- Position inside the config's expected area and time inside its dates (n/a without them,
+  and for deck tests).
+- Informational: the range of cast times and positions, cast count, deck tests, casts with
+  bottles fired, instrument model.
+
+**Science checks** (PDF and notebook), per cast that isn't a deck test:
+- Primary/secondary temperature, conductivity and salinity agreement below 20 dbar (median).
+- Plausible ranges, Wild Edit spikes (seabirdscientific, SBE Data Processing's 2/20 σ settings).
+- Lost scans from the modulo counter, pump on in the water.
+- Sensor calibration age: warns when a sensor's `.XMLCON` calibration date is more than
+  `max_calibration_age_days` (default 365) before the cast.
+- Informational: maximum pressure, descent rate and heave, duration, bottle fires.
+
+**Sensor loadout** (PDF and notebook), per cast: the sensor on each frequency and voltage
+channel with its serial number, calibration date and age at the time of the cast, and the deck
+unit settings (scan rate, suppressed channels, data appended to each scan).
+
+## R2R
 
 The `r2r` commands add R2R's CTD tests, its rating and the R2R QA 2.0 XML. They take a cruise
 TOML with R2R's IDs, ports and fileset ID, which come from R2R's catalog:
@@ -93,17 +133,53 @@ uv run sbe-qa-processing r2r config-from-qa path/to/r2r_qa.2.0.xml   # configs/M
 uv run sbe-qa-processing r2r run configs/MYCRUISE.toml path/to/fileset -o output/MYCRUISE
 ```
 
+`r2r run` writes the core reports, with R2R's certificate (rating, tests and infos) at the
+front of the PDF and in the notebook, named `<CRUISE>_<FILESET>`, plus:
+
+| Output | Contents |
+|---|---|
+| `<CRUISE>_<FILESET>_qa.2.0.xml` | R2R QA 2.0 rollup report: the same tests, infos, ratings and manifest R2R's `r2r-ctd` produces, in R2R's schema and with its stylesheet reference |
+
 `run -c` takes the same cruise TOML and ignores the R2R fields.
 
-Every command is listed by `sbe-qa-processing --help`, and documents its arguments under
-`sbe-qa-processing COMMAND --help`. They share these conventions:
-- `-o/--output` is a directory; only `site-config` writes a single file. Commands that make a
-  cruise TOML write `<OUTPUT_DIR>/<CRUISE_ID>.toml` (default `configs/`), or to stdout with
-  `-o -`.
-- Existing outputs, reports included, aren't overwritten without `--force`. The exception is
-  the `openvdm` hook, which replaces its reports after each transfer.
+### R2R tests
 
-## Running from OpenVDM
+Written to the XML and the certificate:
+- Presence of all raw files: every cast has `.hex/.dat`, `.XMLCON/.con` and `.hdr`.
+- Valid checksums: every file in the bag's `manifest-md5.txt` matches. BLACK (X) without a
+  manifest.
+- Lat/lon and dates within the cruise extent and dates (deck tests excluded).
+- Infos: raw file count, casts with bottles fired, instrument model, casts with NAV on every
+  scan, and casts with missing files, unreadable `.hex` or `.XMLCON`, deck tests, sensor serial
+  number mismatches (`.hdr` vs `.XMLCON`), or bad/outside navigation.
+
+### Validation against R2R
+
+`tests/test_r2r_comparison.py` runs the tool on two released R2R filesets and requires the
+XML's `certificate` (ratings, results, bounds, infos) and manifest to be identical to R2R's own
+reports:
+
+| Fileset | R2R | This tool |
+|---|---|---|
+| SP2613 / 169847 (Sproul) | G | G, certificate identical |
+| RR2605 / 170644 (Revelle) | Y (one cast outside the extent) | Y, certificate identical |
+| BH18-18 / 132368 (Blue Heron) | no QA 2.0 report | R presence test (a cast with only a `.hdr`), SBE 21 configuration flagged |
+
+Fetch them with:
+
+```bash
+uv run sbe-qa-processing r2r fetch-fileset SP2613 169847   # into data/SP2613_169847_ctd/
+uv run sbe-qa-processing r2r fetch-fileset RR2605 170644
+uv run sbe-qa-processing r2r fetch-fileset BH18-18 132368
+uv run pytest
+```
+
+R2R doesn't document every rule; the ones inferred here (deck tests excluded from NAV tests, a
+NAV test is YELLOW at ≥ 50% of casts, the overall rating counts individual per-cast checks) are
+noted in `src/sbe_qa_processing/integrations/r2r/rules.py` and reproduce R2R's ratings for both
+filesets.
+
+## OpenVDM
 
 [OpenVDM](https://github.com/OceanDataTools/openvdm) can run the QA after each CTD transfer, as a
 `postCollectionSystemTransfer` hook. It writes the core reports (PDF, SVG plots, notebook), not
@@ -198,67 +274,6 @@ reports what's missing or assumed: where the cruise extent came from, an open-en
 end date (set to today) and site config settings that are no longer used. The hook still
 rebuilds the TOML on every run, since OpenVDM's cruise details and extent change during a
 cruise.
-
-## What it checks
-
-**Integrity checks** (PDF, notebook and the command's summary), for every cast, deck tests
-included, and summarized for the fileset:
-- Raw files complete (`.hex/.dat`, `.XMLCON/.con`, `.hdr`; `.bl` noted) and readable.
-- Checksums against the bag's `manifest-md5.txt` or the config's `[fileset] manifest`; n/a
-  without a manifest.
-- A valid NMEA position (not 0,0), and the position on every scan.
-- A cast time that isn't before 1990 (an unset clock) or in the future, and casts in time order
-  by file name.
-- Header temperature and conductivity serial numbers match the `.XMLCON`.
-- Position inside the cruise extent and time inside the cruise dates (n/a for deck tests).
-- Informational: the range of cast times and positions, cast count, deck tests, casts with
-  bottles fired, instrument model.
-
-**R2R tests** (`r2r run`; written to the XML and the PDF):
-- Presence of all raw files: every cast has `.hex/.dat`, `.XMLCON/.con` and `.hdr`.
-- Valid checksums: every file in the bag's `manifest-md5.txt` matches. BLACK (X) without a
-  manifest.
-- Lat/lon and dates within the cruise extent and dates (deck tests excluded).
-- Infos: raw file count, casts with bottles fired, instrument model, casts with NAV on every
-  scan, and casts with missing files, unreadable `.hex` or `.XMLCON`, deck tests, sensor serial
-  number mismatches (`.hdr` vs `.XMLCON`), or bad/outside navigation.
-
-**Science checks** (PDF and notebook), per cast that isn't a deck test:
-- Primary/secondary temperature, conductivity and salinity agreement below 20 dbar (median).
-- Plausible ranges, Wild Edit spikes (seabirdscientific, SBE Data Processing's 2/20 σ settings).
-- Lost scans from the modulo counter, pump on in the water.
-- Sensor calibration age: warns when a sensor's `.XMLCON` calibration date is more than
-  `max_calibration_age_days` (default 365) before the cast.
-- Informational: maximum pressure, descent rate and heave, duration, bottle fires.
-
-**Sensor loadout** (PDF and notebook), per cast: the sensor on each frequency and voltage
-channel with its serial number, calibration date and age at the time of the cast, and the deck
-unit settings (scan rate, suppressed channels, data appended to each scan).
-
-## Validation against R2R
-
-`tests/test_r2r_comparison.py` runs the tool on two released R2R filesets and requires the
-XML's `certificate` (ratings, results, bounds, infos) and manifest to be identical to R2R's own
-reports:
-
-| Fileset | R2R | This tool |
-|---|---|---|
-| SP2613 / 169847 (Sproul) | G | G, certificate identical |
-| RR2605 / 170644 (Revelle) | Y (one cast outside the extent) | Y, certificate identical |
-| BH18-18 / 132368 (Blue Heron) | no QA 2.0 report | R presence test (a cast with only a `.hdr`), SBE 21 configuration flagged |
-
-Fetch them with:
-
-```bash
-uv run sbe-qa-processing r2r fetch-fileset SP2613 169847   # into data/SP2613_169847_ctd/
-uv run sbe-qa-processing r2r fetch-fileset RR2605 170644
-uv run sbe-qa-processing r2r fetch-fileset BH18-18 132368
-uv run pytest
-```
-
-R2R doesn't document every rule; the ones inferred here (deck tests excluded from NAV tests, a
-NAV test is YELLOW at ≥ 50% of casts, the overall rating counts individual per-cast checks) are
-noted in `src/sbe_qa_processing/integrations/r2r/rules.py` and reproduce R2R's ratings for both filesets.
 
 ## seabirdscientific version
 

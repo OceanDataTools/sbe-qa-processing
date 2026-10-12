@@ -4,13 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`sbe-qa-processing` (GitHub: `OceanDataTools/sbe-qa-processing`, public, MIT License) runs quality assessment on Sea-Bird **SBE 9/911plus** CTD filesets. It reads a BagIt bag as R2R/NCEI distribute it, or a plain directory of Seasave output, together with a cruise TOML. It writes:
-- an R2R QA 2.0 XML,
+`sbe-qa-processing` (GitHub: `OceanDataTools/sbe-qa-processing`, public, MIT License) runs quality assessment on Sea-Bird **SBE 9/911plus** CTD casts. Its first audience is anyone with a directory of raw Seasave files (or a BagIt bag as R2R/NCEI distribute it), with an optional config TOML. The core runs integrity and science checks and writes:
 - a PDF report,
 - every figure as an SVG,
 - a Jupyter notebook that re-runs the assessment.
 
-It runs from the CLI or as an OpenVDM post-transfer hook.
+Two optional integrations build on the core, for their own users only:
+- **R2R** (`integrations/r2r`, the `r2r` commands) adds R2R's CTD tests, rating and QA 2.0 XML.
+- **OpenVDM** (`integrations/openvdm`, the `openvdm` hook, `site-config` and `config-from-openvdm`; the `openvdm` extra) runs the core QA after each CTD transfer.
+
+Core must never depend on either. Keep R2R- or OpenVDM-specific behavior in its integration, and add hooks to core (like `write_pdf`'s `front` or `NotebookExtras`) rather than integration knowledge.
 
 The R2R XML is a parity target. `tests/test_r2r_comparison.py` requires its `certificate` and manifest to be **identical** to R2R's own reports for released filesets. Treat changes to `integrations/r2r/rules.py`, `integrations/r2r/xml_report.py`, or anything feeding them as behavior changes.
 
@@ -32,7 +35,7 @@ Use uv. Run from the repo root.
 - Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [-o configs/site.toml] [--force]`
 - Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL --site-config site.toml [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`.
 
-`data/` (downloaded filesets) and `output/` (generated reports) are gitignored. `configs/` holds the three validation cruises and `site.example.toml`.
+`data/` (downloaded filesets) and `output/` (generated reports) are gitignored. `configs/` holds the three validation cruises' R2R cruise TOMLs and `site.example.toml`.
 
 ## seabirdscientific dependency
 
@@ -85,7 +88,7 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
 ## Conventions
 
 - Python ≥3.11 with modern syntax. Prefer dataclasses. Write short docstrings without `:param:` boilerplate, and put units in brackets in comments (`# [dbar]`).
-- Renaming a public function or module changes the generated notebook too: `notebook.py` writes import lines and calls as strings. No test executes the notebook, so check by hand with `run ... --execute-notebook` after such changes.
+- Renaming a public function or module changes the generated notebook too: `notebook.py` and `integrations/r2r/reports.notebook_extras` write import lines and calls as strings. No test executes the notebook, so check by hand with `run ... --execute-notebook` and `r2r run ... --execute-notebook` after such changes.
 - The seawater deprecation warning from seabirdscientific's EOS-80 import is filtered in `cli.py`, `tests/conftest.py` and the notebook's setup cell.
 - An `Extent` with westernmost > easternmost crosses the antimeridian, as in R2R's reports and OpenVDM's `cruiseExtent`. Test positions with `Extent.contains`, never by comparing edges, and draw anything spanning the box relative to a central longitude, as `plots.cast_map` does.
 - Tests are plain pytest functions. Use small synthetic inputs where possible, and use the downloaded R2R filesets for end-to-end parity.

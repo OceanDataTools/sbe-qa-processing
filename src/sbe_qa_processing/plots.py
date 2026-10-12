@@ -13,7 +13,7 @@ from sbe_qa_processing import maps
 from sbe_qa_processing.bottles import bottle_fires
 from sbe_qa_processing.cast import CastData
 from sbe_qa_processing.config import CruiseConfig
-from sbe_qa_processing.r2r import cast_position
+from sbe_qa_processing.integrity import cast_position
 from sbe_qa_processing.science import downcast_slice
 
 PRIMARY = "#1f5f8b"

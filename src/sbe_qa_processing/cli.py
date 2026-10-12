@@ -55,6 +55,11 @@ def _summarize(result, written: list[Path]) -> None:
     for test in result.r2r.tests:
         failures = f"  ({', '.join(test.failures)})" if test.failures else ""
         print(f"  {test.rating}  {test.name}{failures}")
+    integrity = [c for c in result.integrity.fileset if c.status in ("warn", "fail")]
+    print(f"  integrity checks: {len(integrity)} warnings/failures")
+    for check in integrity:
+        detail = f": {check.detail}" if check.detail else ""
+        print(f"    {check.name} {check.status} ({check.value}){detail}")
     problems = [
         f"{cast}: {check.name} {check.status} ({check.value})"
         for cast, checks in result.science.items()

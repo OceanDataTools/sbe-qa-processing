@@ -26,15 +26,18 @@ STDOUT = "-"
 
 
 def _write_reports(result, output: Path, execute_notebook: bool) -> list[Path]:
-    """The XML, PDF (with its SVG plots) and notebook for a QA result, in output"""
+    """The PDF (with its SVG plots) and notebook for a QA result, in output, and the R2R XML
+    when there are R2R results
+    """
     from sbe_qa_processing.notebook import write_notebook
     from sbe_qa_processing.pdf_report import write_pdf
     from sbe_qa_processing.xml_report import write_qa_xml
 
     output.mkdir(parents=True, exist_ok=True)
     paths = _report_paths(output, result.config.identifier)
+    xml = [write_qa_xml(result, paths["xml"])] if result.r2r is not None else []
     return [
-        write_qa_xml(result, paths["xml"]),
+        *xml,
         write_pdf(result, paths["pdf"], paths["plots"]),
         paths["plots"],
         write_notebook(result, paths["notebook"], output, execute=execute_notebook),
@@ -51,10 +54,13 @@ def _report_paths(output: Path, identifier: str) -> dict[str, Path]:
 
 
 def _summarize(result, written: list[Path]) -> None:
-    print(f"{result.config.identifier}: R2R rating {result.r2r.rating}")
-    for test in result.r2r.tests:
-        failures = f"  ({', '.join(test.failures)})" if test.failures else ""
-        print(f"  {test.rating}  {test.name}{failures}")
+    if result.r2r is None:
+        print(f"{result.config.identifier}: {len(result.casts)} casts")
+    else:
+        print(f"{result.config.identifier}: R2R rating {result.r2r.rating}")
+        for test in result.r2r.tests:
+            failures = f"  ({', '.join(test.failures)})" if test.failures else ""
+            print(f"  {test.rating}  {test.name}{failures}")
     integrity = [c for c in result.integrity.fileset if c.status in ("warn", "fail")]
     print(f"  integrity checks: {len(integrity)} warnings/failures")
     for check in integrity:
@@ -105,15 +111,14 @@ def _write_cruise_toml(text: str, cruise_id: str, args: argparse.Namespace) -> i
 
 
 def _run(args: argparse.Namespace) -> int:
-    from sbe_qa_processing.config import load_config
-    from sbe_qa_processing.qa import run_qa
+    from sbe_qa_processing.qa import resolve_config, run_qa
 
-    identifier = load_config(args.cruise_toml).identifier
-    existing = [p for p in _report_paths(args.output, identifier).values() if p.exists()]
+    config = resolve_config(args.config, args.fileset_dir)
+    existing = [p for p in _report_paths(args.output, config.identifier).values() if p.exists()]
     if existing and not args.force:
         print(f"{existing[0]} exists; use --force to overwrite the reports", file=sys.stderr)
         return 1
-    result = run_qa(args.cruise_toml, args.fileset_dir)
+    result = run_qa(args.fileset_dir, args.config)
     _summarize(result, _write_reports(result, args.output, args.execute_notebook))
     return 0
 
@@ -160,7 +165,7 @@ def _openvdm(args: argparse.Namespace) -> int:
     # Snapshot what OpenVDM supplied, so the notebook can re-run exactly this assessment
     snapshot = run.output_dir / f"{run.config.identifier}_cruise.toml"
     snapshot.write_text(openvdm.cruise_toml(run, site_root))
-    result = run_qa(snapshot, run.fileset_dir)
+    result = run_qa(run.fileset_dir, snapshot)
     written = [snapshot, *_write_reports(result, run.output_dir, args.execute_notebook)]
     openvdm.chown_tree(run.output_dir, run.owner)
     _summarize(result, written)
@@ -362,14 +367,27 @@ def build_parser() -> argparse.ArgumentParser:
     run = commands.add_parser(
         "run",
         help="assess a fileset and write the reports",
-        description="Assesses a fileset and writes the R2R QA XML, PDF, SVG plots and notebook.",
+        description=(
+            "Assesses a fileset and writes the PDF, SVG plots and notebook. With a config that "
+            "has the cruise ID and dates R2R needs, it also runs R2R's tests and writes the R2R "
+            "QA XML."
+        ),
     )
-    run.add_argument("cruise_toml", metavar="CRUISE_TOML", type=Path, help="cruise TOML")
     run.add_argument(
         "fileset_dir",
         metavar="FILESET_DIR",
         type=Path,
         help="BagIt bag or directory of casts",
+    )
+    run.add_argument(
+        "-c",
+        "--config",
+        metavar="CONFIG_TOML",
+        type=Path,
+        help=(
+            "config TOML: title, expected area and dates, thresholds, ...; optional. Without "
+            "one, the reports are titled after FILESET_DIR"
+        ),
     )
     run.add_argument(
         "-o",

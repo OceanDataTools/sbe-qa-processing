@@ -7,15 +7,16 @@
 > Don't rely on it for operational QA yet. Issues and comments are welcome.
 
 Quality assessment for Sea-Bird **SBE 9/911plus** CTD filesets. From a fileset (a BagIt bag as
-R2R/NCEI distribute it, or a plain directory of Seasave output) and a small cruise config, it
-writes:
+R2R/NCEI distribute it, or a plain directory of Seasave output) and an optional config, it
+writes the files below. Their names start with the config's cruise ID, or the fileset
+directory's name without one (`<TITLE>`); for an R2R cruise, with `<CRUISE>_<FILESET>`.
 
 | Output | Contents |
 |---|---|
-| `<CRUISE>_<FILESET>_qa.2.0.xml` | R2R QA 2.0 rollup report: the same tests, infos, ratings and manifest R2R's `r2r-ctd` produces, in R2R's schema and with its stylesheet reference |
-| `<CRUISE>_<FILESET>_qa_report.pdf` | R2R certificate; a cast map with coastlines and a world inset; and per cast: profiles, dual-sensor differences, TS diagram, pressure record, science checks and sensor loadout |
-| `<CRUISE>_<FILESET>_plots/*.svg` | Every report figure as SVG: the cast map, and each cast's profiles, TS diagram and pressure record. The PDF embeds these same SVGs as vector graphics |
-| `<CRUISE>_<FILESET>_qa.ipynb` | A notebook that re-runs the whole assessment step by step, to inspect or change it |
+| `<TITLE>_qa_report.pdf` | R2R certificate (for an R2R cruise); a cast map with coastlines and a world inset; and per cast: profiles, dual-sensor differences, TS diagram, pressure record, integrity and science checks and sensor loadout |
+| `<TITLE>_plots/*.svg` | Every report figure as SVG: the cast map, and each cast's profiles, TS diagram and pressure record. The PDF embeds these same SVGs as vector graphics |
+| `<TITLE>_qa.ipynb` | A notebook that re-runs the whole assessment step by step, to inspect or change it |
+| `<CRUISE>_<FILESET>_qa.2.0.xml` | For an R2R cruise only: the R2R QA 2.0 rollup report, with the same tests, infos, ratings and manifest R2R's `r2r-ctd` produces, in R2R's schema and with its stylesheet reference |
 
 Raw `.hex` data is read and converted with
 [seabirdscientific](https://github.com/Sea-BirdScientific/seabirdscientific), installed from
@@ -53,14 +54,41 @@ coastlines.
 ## Usage
 
 ```bash
-# Cruise metadata R2R normally takes from its catalog: id, dates, bounding box, ...
+uv run sbe-qa-processing run path/to/fileset -o output/MYCASTS
+uv run sbe-qa-processing run path/to/fileset -c my_config.toml -o output/MYCASTS --execute-notebook
+```
+
+Without `-c`, the reports are titled after the fileset directory, and the integrity checks
+that need an expected area or dates are n/a. A config sets those and the thresholds; every
+field is optional (see `src/sbe_qa_processing/config.py`):
+
+```toml
+[cruise]
+id = "LAKE1"        # the reports' title
+name = "..."
+depart_date = 2026-07-09   # expected dates
+arrive_date = 2026-07-10
+
+[cruise.extent]     # expected area
+westernmost = -88.0
+easternmost = -87.0
+southernmost = 42.0
+northernmost = 43.0
+
+[thresholds]        # e.g. fresh water
+salinity_range = [0.0, 42.0]
+```
+
+A cruise config with the cruise ID and both dates is an R2R cruise: `run` also runs R2R's tests
+and writes the R2R QA XML, and the reports are named `<CRUISE>_<FILESET>`. R2R's IDs, ports and
+fileset ID come from its catalog:
+
+```bash
 # from R2R's catalog API, for a cruise and CTD fileset R2R knows:
 uv run sbe-qa-processing config-from-r2r MYCRUISE 123456   # writes configs/MYCRUISE.toml
-# or from an existing R2R QA 2.0 report (adds port coordinates), or write it by hand:
+# or from an existing R2R QA 2.0 report (adds port coordinates):
 uv run sbe-qa-processing config-from-r2r-qa path/to/r2r_qa.2.0.xml   # configs/MYCRUISE.toml
-
-uv run sbe-qa-processing run configs/MYCRUISE.toml path/to/fileset -o output/MYCRUISE
-uv run sbe-qa-processing run configs/MYCRUISE.toml path/to/fileset -o output/MYCRUISE --execute-notebook
+uv run sbe-qa-processing run path/to/fileset -c configs/MYCRUISE.toml -o output/MYCRUISE
 ```
 
 Every command is listed by `sbe-qa-processing --help`, and documents its arguments under
@@ -70,29 +98,6 @@ Every command is listed by `sbe-qa-processing --help`, and documents its argumen
   `-o -`.
 - Existing outputs, reports included, aren't overwritten without `--force`. The exception is
   the `openvdm` hook, which replaces its reports after each transfer.
-
-A cruise config (see `src/sbe_qa_processing/config.py` for every field):
-
-```toml
-[cruise]
-id = "SP2613"
-name = "..."
-vessel_id = "32ST"
-depart_date = 2026-07-09
-arrive_date = 2026-07-09
-
-[cruise.extent]   # the NAV tests check casts against this box
-westernmost = -117.3773
-easternmost = -117.2262
-southernmost = 32.5997
-northernmost = 32.7054
-
-[fileset]
-id = 169847
-
-[thresholds]      # optional; e.g. fresh water
-salinity_range = [0.0, 42.0]
-```
 
 ## Running from OpenVDM
 
@@ -175,7 +180,7 @@ running the QA:
 ```bash
 uv run sbe-qa-processing config-from-openvdm --site-config configs/site.toml \
     --openvdm-config /opt/openvdm/server/etc/openvdm.yaml                      # configs/<CRUISE>.toml
-uv run sbe-qa-processing run configs/<CRUISE>.toml /path/to/cruise/CTD -o output/<CRUISE>
+uv run sbe-qa-processing run /path/to/cruise/CTD -c configs/<CRUISE>.toml -o output/<CRUISE>
 ```
 
 `config-from-openvdm` takes the same OpenVDM options as the hook, plus `-o DIR` (or `-o -` for
@@ -197,7 +202,8 @@ included, and summarized for the fileset:
   by file name.
 - Header temperature and conductivity serial numbers match the `.XMLCON`.
 - Position inside the cruise extent and time inside the cruise dates (n/a for deck tests).
-- Informational: cast count, deck tests, casts with bottles fired, instrument model.
+- Informational: the range of cast times and positions, cast count, deck tests, casts with
+  bottles fired, instrument model.
 
 **R2R tests** (written to the XML and the PDF):
 - Presence of all raw files: every cast has `.hex/.dat`, `.XMLCON/.con` and `.hdr`.

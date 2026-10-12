@@ -207,3 +207,13 @@ def test_missing_openvdm_config_is_an_error(tmp_path, capsys):
     err = capsys.readouterr().err
     assert f"no openvdm.yaml at {missing}" in err and "--site-root" not in err
     assert not output.exists()
+
+
+def test_site_theme_round_trips(tmp_path):
+    site = SiteConfig(theme={"page_size": "A4", "colors": {"primary": "#123456"}})
+    path = tmp_path / "site.toml"
+    path.write_text(site_config_to_toml(site))
+    assert load_site_config(path) == site
+    # Without one, the file shows how to set it
+    path.write_text(site_config_to_toml(SiteConfig()))
+    assert "# [theme]" in path.read_text()

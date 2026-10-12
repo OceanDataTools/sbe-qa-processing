@@ -22,6 +22,7 @@ from pathlib import Path
 # Stdlib only: pyyaml (the openvdm extra) is imported when openvdm.yaml is read
 from sbe_qa_processing.integrations.openvdm.hook import DEFAULT_OPENVDM_CONFIG, OpenVDMError
 from sbe_qa_processing.integrations.r2r.catalog import R2RError
+from sbe_qa_processing.theme import ThemeError
 
 logger = logging.getLogger(__name__)
 STDOUT = "-"
@@ -81,7 +82,9 @@ def _run(args: argparse.Namespace) -> int:
     if _refuse_existing_reports(reports.report_paths(args.output, config.identifier), args.force):
         return 1
     result = run_qa(args.fileset_dir, args.config)
-    written = reports.write_reports(result, args.output, args.execute_notebook)
+    written = reports.write_reports(
+        result, args.output, args.execute_notebook, theme_file=args.theme
+    )
     lines = [f"{result.config.identifier}: {len(result.casts)} casts", *reports.summary(result)]
     _print_summary(lines, written)
     return 0
@@ -95,7 +98,9 @@ def _r2r_run(args: argparse.Namespace) -> int:
     if _refuse_existing_reports(reports.report_paths(args.output, identifier), args.force):
         return 1
     run = reports.run_r2r(args.fileset_dir, args.cruise_toml)
-    written = reports.write_r2r_reports(run, args.output, args.execute_notebook)
+    written = reports.write_r2r_reports(
+        run, args.output, args.execute_notebook, theme_file=args.theme
+    )
     _print_summary(reports.summary(run), written)
     return 0
 
@@ -148,7 +153,12 @@ def _openvdm(args: argparse.Namespace) -> int:
     snapshot = run.output_dir / f"{run.config.identifier}_cruise.toml"
     snapshot.write_text(openvdm.cruise_toml(run, site_root))
     result = run_qa(run.fileset_dir, snapshot)
-    written = [snapshot, *reports.write_reports(result, run.output_dir, args.execute_notebook)]
+    written = [
+        snapshot,
+        *reports.write_reports(
+            result, run.output_dir, args.execute_notebook, theme_file=args.theme
+        ),
+    ]
     openvdm.chown_tree(run.output_dir, run.owner)
     lines = [f"{result.config.identifier}: {len(result.casts)} casts", *reports.summary(result)]
     _print_summary(lines, written)
@@ -336,6 +346,15 @@ def _add_openvdm_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_theme(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--theme",
+        metavar="THEME_TOML",
+        type=Path,
+        help="theme file for the PDF, figures and notebook; the config's [theme] applies on top",
+    )
+
+
 def _add_report_output(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-o",
@@ -349,6 +368,7 @@ def _add_report_output(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--execute-notebook", action="store_true", help="run the notebook and save its outputs"
     )
+    _add_theme(parser)
 
 
 def _add_r2r_commands(commands) -> None:
@@ -499,6 +519,7 @@ def build_parser() -> argparse.ArgumentParser:
     hook.add_argument(
         "--execute-notebook", action="store_true", help="run the notebook and save its outputs"
     )
+    _add_theme(hook)
     hook.set_defaults(handler=_openvdm)
 
     from_openvdm = commands.add_parser(
@@ -573,7 +594,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "openvdm":  # OpenVDM shows the hook's failure message
             print(f"sbe-qa-processing: {type(error).__name__}: {error}", file=sys.stderr)
             return 1
-        if isinstance(error, R2RError | OpenVDMError):  # expected: no traceback
+        if isinstance(error, R2RError | OpenVDMError | ThemeError):  # expected: no traceback
             print(f"sbe-qa-processing: {error}", file=sys.stderr)
             return 1
         raise

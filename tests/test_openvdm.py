@@ -546,3 +546,12 @@ def test_without_pyyaml(tmp_path, monkeypatch, capsys):
     fileset = tmp_path / "MY_CASTS"
     fileset.mkdir()
     assert main(["run", str(fileset), "-o", str(tmp_path / "output")]) == 0
+
+
+def test_resolve_passes_the_site_theme_to_the_snapshot(tmp_path):
+    site = openvdm.SiteConfig(theme={"page_size": "A4"})
+    run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
+    assert run.config.theme == {"page_size": "A4"}
+    snapshot = tmp_path / "snapshot.toml"
+    snapshot.write_text(openvdm.cruise_toml(run, "http://openvdm/"))
+    assert load_config(snapshot).theme == {"page_size": "A4"}

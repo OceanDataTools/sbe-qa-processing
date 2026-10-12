@@ -39,6 +39,7 @@ from sbe_qa_processing.config import (
     thresholds_toml,
     toml_value,
 )
+from sbe_qa_processing.theme import theme_table, theme_toml
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,8 @@ class SiteConfig:
     contact_email = "ship-tech@example.org"
 
     [thresholds]              # as in a config TOML
+
+    [theme]                   # as in a config TOML; paths relative to this file
     """
 
     vessel_name: str = ""
@@ -83,6 +86,7 @@ class SiteConfig:
     contact_institution: str = ""
     contact_email: str = ""
     thresholds: Thresholds = field(default_factory=Thresholds)
+    theme: dict = field(default_factory=dict)  # the [theme] table, as QAConfig.theme
     # Settings in the file that aren't used any more, e.g. R2R's IDs
     ignored: list[str] = field(default_factory=list)
 
@@ -126,6 +130,7 @@ def load_site_config(path: Path | str | None) -> SiteConfig:
         thresholds=thresholds_from_table(
             {k: v for k, v in thresholds.items() if k != "yellow_minimum_percent"}
         ),
+        theme=theme_table(data.get("theme", {}), Path(path).parent, str(path)),
         ignored=ignored,
     )
 
@@ -170,7 +175,11 @@ def site_config_to_toml(site: SiteConfig) -> str:
     if not thresholds:
         thresholds = ["", "# QA thresholds, as in a config TOML; e.g. for fresh water:"]
         thresholds += ["# [thresholds]", "# salinity_range = [0.0, 42.0]"]
-    return "\n".join(lines + thresholds) + "\n"
+    theme = theme_toml(site.theme)
+    if not theme:
+        theme = ["", "# The reports' theme, as in a config TOML; e.g.:"]
+        theme += ["# [theme]", '# page_size = "A4"', '# palette = "colorblind"']
+    return "\n".join(lines + thresholds + theme) + "\n"
 
 
 def load_openvdm_yaml(openvdm_config: Path | str) -> dict:
@@ -375,6 +384,7 @@ def resolve(
         arrive_date=arrive if depart is not None else None,
         manifest_path=cruise_dir / md5_summary if md5_summary else None,
         thresholds=site.thresholds,
+        theme=site.theme,
     )
     return HookRun(
         config=config,

@@ -26,8 +26,12 @@ class NotebookExtras:
 
 
 def build_notebook(
-    result: QAResult, output_dir: Path, extras: NotebookExtras | None = None
+    result: QAResult,
+    output_dir: Path,
+    extras: NotebookExtras | None = None,
+    theme_file: Path | None = None,
 ) -> nbformat.NotebookNode:
+    """theme_file is the --theme file the reports were written with, if any"""
     config = result.config
     identifier = config.identifier
     extras = extras or NotebookExtras()
@@ -55,6 +59,12 @@ def build_notebook(
             "# Inputs and outputs\n"
             + config_line
             + f"FILESET = Path({str(result.fileset.root.resolve())!r})\n"
+            + (
+                f"THEME_FILE = Path({str(Path(theme_file).resolve())!r})\n"
+                if theme_file
+                else "THEME_FILE = None  # a --theme file; the config's [theme] applies on top\n"
+            )
+            + ""
             f"OUTPUT_DIR = Path({str(output_dir.resolve())!r})"
         ),
         new_code_cell(
@@ -65,16 +75,18 @@ def build_notebook(
             "from IPython.display import display\n\n"
             "from sbe_qa_processing import plots\n"
             "from sbe_qa_processing.pdf_report import write_pdf\n"
-            "from sbe_qa_processing.qa import run_qa\n" + extras.imports + "\n"
+            "from sbe_qa_processing.qa import run_qa\n"
+            "from sbe_qa_processing.theme import resolve_theme\n" + extras.imports + "\n"
             "# seabirdscientific's EOS-80 module imports the deprecated seawater package\n"
             'warnings.filterwarnings("ignore", "The seawater library is deprecated")\n'
             'pd.set_option("display.max_colwidth", 120)\n\n'
             f"result = run_qa(FILESET, {config_code})\n"
+            "theme = resolve_theme(THEME_FILE, result.config)\n"
             'print(f"{len(result.casts)} casts read")' + extras.after_run
         ),
         *extras.cells,
         new_code_cell(
-            "figure = plots.cast_map(result.casts, result.config)\n"
+            "figure = plots.cast_map(result.casts, result.config, theme)\n"
             "display(figure)\n"
             "plt.close(figure)"
         ),
@@ -140,7 +152,7 @@ def build_notebook(
         new_code_cell(
             "for data in result.science_casts:\n"
             "    for make in (plots.profiles, plots.ts_diagram, plots.pressure_series):\n"
-            "        figure = make(data)\n"
+            "        figure = make(data, theme)\n"
             "        display(figure)\n"
             "        plt.close(figure)"
         ),
@@ -149,7 +161,7 @@ def build_notebook(
             "OUTPUT_DIR.mkdir(parents=True, exist_ok=True)\n"
             + extras.write
             + f'print(write_pdf(result, OUTPUT_DIR / "{identifier}_qa_report.pdf"'
-            + f"{extras.pdf_arguments}))"
+            + f"{extras.pdf_arguments}, theme=theme))"
         ),
     ]
     notebook = new_notebook(cells=cells)
@@ -168,9 +180,10 @@ def write_notebook(
     output_dir: Path | str,
     execute: bool = False,
     extras: NotebookExtras | None = None,
+    theme_file: Path | None = None,
 ) -> Path:
     path = Path(path)
-    notebook = build_notebook(result, Path(output_dir), extras)
+    notebook = build_notebook(result, Path(output_dir), extras, theme_file)
     if execute:
         try:
             from nbclient import NotebookClient

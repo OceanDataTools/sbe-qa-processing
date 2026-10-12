@@ -96,6 +96,8 @@ class QAConfig:
     # with paths relative to the manifest's directory. A BagIt bag uses its own manifest-md5.txt
     manifest_path: Path | None = None
     thresholds: Thresholds = field(default_factory=Thresholds)
+    # The [theme] table, checked and with absolute paths (theme.py); applied over a --theme file
+    theme: dict = field(default_factory=dict)
 
     @property
     def identifier(self) -> str:
@@ -126,6 +128,8 @@ def load_config(path: Path | str) -> QAConfig:
     """A config TOML. Tables and keys only the integrations use (e.g. R2R's IDs and ports) are
     ignored
     """
+    from sbe_qa_processing.theme import theme_table  # theme.py imports this module
+
     with open(path, "rb") as file:
         data = tomllib.load(file)
     cruise = data.get("cruise", {})
@@ -147,11 +151,14 @@ def load_config(path: Path | str) -> QAConfig:
         arrive_date=as_date(cruise["arrive_date"]) if "arrive_date" in cruise else None,
         manifest_path=(Path(path).parent / manifest).resolve() if manifest else None,
         thresholds=thresholds_from_table(thresholds),
+        theme=theme_table(data.get("theme", {}), Path(path).parent, str(path)),
     )
 
 
 def config_to_toml(config: QAConfig) -> str:
     """The config as TOML that load_config reads back, e.g. to snapshot what a hook resolved"""
+    from sbe_qa_processing.theme import theme_toml  # theme.py imports this module
+
     cruise = {
         "id": config.cruise_id,
         "name": config.cruise_name,
@@ -181,6 +188,7 @@ def config_to_toml(config: QAConfig) -> str:
     if provenance:
         lines += ["", "[provenance]"] + [f"{k} = {toml_value(v)}" for k, v in provenance.items()]
     lines += thresholds_toml(config.thresholds)
+    lines += theme_toml(config.theme)
     return "\n".join(lines) + "\n"
 
 

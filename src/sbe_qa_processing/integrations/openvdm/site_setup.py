@@ -2,7 +2,7 @@
 
 Prompts go to stderr, so the TOML alone can go to stdout. Each prompt shows its default in
 brackets: Enter keeps it, ``-`` clears it. At the end of input every remaining field keeps its
-default, so ``--from-r2r`` with no terminal writes the R2R values unchanged.
+default, so with no terminal an existing file is written back unchanged.
 """
 
 import sys
@@ -11,22 +11,9 @@ from dataclasses import dataclass, field, replace
 from typing import TextIO
 
 from sbe_qa_processing.config import Extent
-from sbe_qa_processing.integrations.r2r.catalog import config_from_r2r_api
-from sbe_qa_processing.openvdm import SiteConfig
+from sbe_qa_processing.integrations.openvdm.hook import SiteConfig
 
 CLEAR = "-"
-
-
-def site_from_r2r(cruise: dict, base: SiteConfig) -> SiteConfig:
-    """base with the vessel, operator and scheduler of a record from R2R's ``api/cruise``"""
-    config = config_from_r2r_api(cruise)
-    return replace(
-        base,
-        vessel_id=config.vessel_id or base.vessel_id,
-        vessel_name=config.vessel_name or base.vessel_name,
-        operator_id=config.operator_id or base.operator_id,
-        scheduler_id=config.scheduler_id or base.scheduler_id,
-    )
 
 
 @dataclass
@@ -79,7 +66,7 @@ def _degrees(limit: float, required: bool = False) -> Callable[[str], str | None
 
 def _ask_extent(prompt: Prompter, default: Extent | None) -> Extent | None:
     prompt.say(
-        "\nFallback cruise bounding box, used when OpenVDM has no cruise extent. "
+        "\nExpected cruise area, used when OpenVDM has no cruise extent. "
         "Leave westernmost blank to skip. westernmost > easternmost is a box across the "
         "antimeridian (180°)."
     )
@@ -132,17 +119,10 @@ def prompt_site_config(
 
     site = replace(
         defaults,
-        vessel_id=ask("vessel_id", "R2R vessel ID (ICES code, e.g. 33RR)"),
         vessel_name=ask("vessel_name", "Vessel name (e.g. Roger Revelle)"),
-        operator_id=ask("operator_id", "R2R operator ID (e.g. edu.ucsd.sio)"),
-        scheduler_id=ask("scheduler_id", "R2R scheduler ID (e.g. org.unols)"),
         contact_institution=ask("contact_institution", "Contact institution for the QA report"),
-        contact_institution_id=ask(
-            "contact_institution_id",
-            "Contact institution's R2R ID (blank: the R2R operator ID)",
-        ),
         contact_email=ask("contact_email", "Contact email", _email),
-        distro_type=ask("distro_type", "R2R distribution type"),
+        ignored=[],
         output_extra_directory=ask(
             "output_extra_directory", "OpenVDM extra directory for the reports"
         ),

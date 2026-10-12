@@ -2174,11 +2174,15 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pandas" },
-    { name = "pyyaml" },
     { name = "reportlab" },
     { name = "seabirdscientific" },
     { name = "shapely" },
     { name = "svglib" },
+]
+
+[package.optional-dependencies]
+openvdm = [
+    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -2186,6 +2190,7 @@ dev = [
     { name = "ipykernel" },
     { name = "nbclient" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
@@ -2197,18 +2202,20 @@ requires-dist = [
     { name = "nbformat", specifier = ">=5.10" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.2.2" },
-    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "pyyaml", marker = "extra == 'openvdm'", specifier = ">=6.0" },
     { name = "reportlab", specifier = ">=4.2" },
     { name = "seabirdscientific", git = "https://github.com/webbpinner/seabirdscientific?rev=integration" },
     { name = "shapely", specifier = ">=2.0" },
     { name = "svglib", specifier = ">=1.5" },
 ]
+provides-extras = ["openvdm"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "ipykernel", specifier = ">=6.29" },
     { name = "nbclient", specifier = ">=0.10" },
     { name = "pytest", specifier = ">=8.3" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.8" },
 ]
 

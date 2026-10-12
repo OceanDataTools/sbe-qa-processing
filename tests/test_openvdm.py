@@ -4,9 +4,9 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import tomllib
-import xml.etree.ElementTree as ET
 from datetime import date
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -15,16 +15,11 @@ import pytest
 import yaml
 from conftest import r2r_fileset
 
-from sbe_qa_processing import openvdm
 from sbe_qa_processing.cli import main
-from sbe_qa_processing.config import Extent
+from sbe_qa_processing.config import Extent, QAConfig, load_config
 from sbe_qa_processing.fileset import load_fileset, md5sum
-from sbe_qa_processing.integrations.r2r.catalog import R2R_NAMESPACE
-from sbe_qa_processing.integrations.r2r.config import load_cruise_config
-from sbe_qa_processing.integrations.r2r.rules import checksum_test
-
-NS = {"r2r": R2R_NAMESPACE}
-
+from sbe_qa_processing.integrations.openvdm import hook as openvdm
+from sbe_qa_processing.integrity import verify_manifest
 
 # OpenVDM's cruiseExtent around SP2613's casts
 SP2613_EXTENT = {
@@ -116,8 +111,9 @@ def test_resolve_paths_and_metadata(tmp_path):
     assert run.extent_source == "openvdm"
     assert run.config.extent == Extent(-117.3773, -117.2262, 32.5997, 32.7054)
     config = run.config
-    assert config.identifier == "SP2613_ctd"  # no R2R fileset ID
-    assert (config.cruise_pi, config.depart_port.name) == ("A. Scientist", "San Diego, CA")
+    assert type(config) is QAConfig and config.identifier == "SP2613"
+    assert (config.cruise_pi, config.cruise_location) == ("A. Scientist", "San Diego Trough")
+    assert (config.depart_date, config.arrive_date) == (date(2026, 7, 9), date(2026, 7, 10))
     assert config.manifest_path == tmp_path / "SP2613/MD5_Summary.txt"
     assert config.vessel_name == "Sproul" and run.owner == "survey"
 
@@ -142,6 +138,19 @@ def test_resolve_explains_missing_configuration(tmp_path):
         openvdm.resolve(cruise_config(tmp_path), site, "CTD")
 
 
+def test_resolve_without_a_start_date(tmp_path):
+    response = cruise_config(tmp_path) | {"cruiseStartDate": ""}
+    run = openvdm.resolve(response, openvdm.SiteConfig(), "CTD")
+    assert (run.config.depart_date, run.config.arrive_date) == (None, None)
+    assert "no start date, so the dates check is n/a" in " ".join(run.notes)
+
+
+def test_resolve_notes_r2r_settings_it_ignores(tmp_path):
+    site = openvdm.SiteConfig(ignored=["[vessel] id"])
+    run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
+    assert "the site config's [vessel] id isn't used" in run.notes
+
+
 # OpenVDM 2.17's vessel block, as in openvdm.yaml and ovdmConfig.json
 VESSEL = {
     "name": "Robert Gordon Sproul",
@@ -157,21 +166,18 @@ VESSEL = {
             VESSEL,
             {
                 "vessel_name": "Robert Gordon Sproul",
-                "vessel_id": "32QU",
-                "operator_id": "edu.ucsd.sio",
-                "scheduler_id": "org.unols",
                 "contact_institution": "Scripps Institution of Oceanography",
                 "contact_email": "ops@ucsd.edu",
             },
         ),
-        # A ship that doesn't submit to R2R has no r2r block; empty values are unset
+        # Empty values are unset
         (
             {"name": "Falkor (too)", "contact": {"institution": "", "email": None}},
             {"vessel_name": "Falkor (too)"},
         ),
-        ({"r2r": {"vesselID": 3301}}, {"vessel_id": "3301"}),  # an ID stays a string
+        ({"r2r": {"vesselID": 3301}}, {}),  # R2R's IDs aren't used
         (None, {}),  # openvdm.yaml from before 2.17
-        ({"name": {"unexpected": "table"}, "r2r": "unexpected"}, {}),
+        ({"name": {"unexpected": "table"}, "contact": "unexpected"}, {}),
     ],
 )
 def test_vessel_settings(block, expected):
@@ -179,33 +185,27 @@ def test_vessel_settings(block, expected):
 
 
 def test_resolve_prefers_openvdms_vessel_settings(tmp_path):
-    site = openvdm.SiteConfig(vessel_id="32ST", scheduler_id="org.unols", distro_type="test")
+    site = openvdm.SiteConfig(
+        vessel_name="Sproul", contact_institution="Scripps Institution of Oceanography"
+    )
     vessel = openvdm.vessel_settings(VESSEL, "openvdm.yaml")
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD", vessel=vessel)
     config = run.config
-    assert (config.vessel_id, config.vessel_name) == ("32QU", "Robert Gordon Sproul")
-    assert (config.operator_id, config.contact_email) == ("edu.ucsd.sio", "ops@ucsd.edu")
-    # OpenVDM doesn't store the contact's R2R ID: on board, that's the operator
-    assert config.contact_institution_id == "edu.ucsd.sio"
-    assert config.distro_type == "test"  # not in OpenVDM
+    assert (config.vessel_name, config.contact_email) == ("Robert Gordon Sproul", "ops@ucsd.edu")
     assert run.vessel_source == "openvdm.yaml"
     # A disagreement is noted; an agreement isn't
     expected = (
-        "vessel_id is '32QU' in OpenVDM's openvdm.yaml and '32ST' in the site config; "
-        "using openvdm.yaml's"
+        "vessel_name is 'Robert Gordon Sproul' in OpenVDM's openvdm.yaml and 'Sproul' in the "
+        "site config; using openvdm.yaml's"
     )
-    assert [n for n in run.notes if "vessel_id" in n] == [expected]
-    assert not any("scheduler_id" in note for note in run.notes)
-    assert not any("no vessel ID" in note for note in run.notes)
+    assert [n for n in run.notes if "vessel_name" in n] == [expected]
+    assert not any("contact_institution" in note for note in run.notes)
 
-    # The site config's contact ID, and fields OpenVDM leaves unset, still apply
-    site = openvdm.SiteConfig(contact_institution_id="edu.ucsd", contact_email="tech@example.org")
-    vessel = openvdm.vessel_settings({"r2r": {"operatorID": "edu.ucsd.sio"}}, "openvdm.yaml")
+    # Fields OpenVDM leaves unset still come from the site config
+    site = openvdm.SiteConfig(contact_email="tech@example.org")
+    vessel = openvdm.vessel_settings({"name": "Sproul"}, "openvdm.yaml")
     config = openvdm.resolve(cruise_config(tmp_path), site, "CTD", vessel=vessel).config
-    assert (config.contact_institution_id, config.contact_email) == (
-        "edu.ucsd",
-        "tech@example.org",
-    )
+    assert (config.vessel_name, config.contact_email) == ("Sproul", "tech@example.org")
 
 
 def test_resolve_reads_the_vessel_from_ovdmconfig_json(tmp_path, caplog):
@@ -215,14 +215,15 @@ def test_resolve_reads_the_vessel_from_ovdmconfig_json(tmp_path, caplog):
     # No ovdmConfig.json yet: the site config alone
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
     assert (run.vessel_source, run.config.vessel_name) == ("none", "Sproul")
-    assert any("no vessel ID: set vessel.r2r.vesselID" in note for note in run.notes)
 
     (cruise_dir / "ovdmConfig.json").write_text(
         json.dumps({"cruiseID": "SP2613", "vessel": VESSEL})
     )
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
-    assert (run.vessel_source, run.config.vessel_id) == ("ovdmConfig.json", "32QU")
-    assert run.config.vessel_name == "Robert Gordon Sproul"
+    assert (run.vessel_source, run.config.vessel_name) == (
+        "ovdmConfig.json",
+        "Robert Gordon Sproul",
+    )
 
     (cruise_dir / "ovdmConfig.json").write_text("{not json")
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
@@ -253,10 +254,8 @@ def test_md5_summary_manifest_and_pending_files(tmp_path):
 
     fileset = load_fileset(ctd, manifest_path=summary)
     assert [e.path for e in fileset.manifest] == ["bad.hex", "good.hex", "late.hex"]
-    result = checksum_test(fileset)
-    assert result.failures == ["bad.hex"]
-    assert result.pending == ["late.hex"]
-    assert (result.passed, result.total) == (1, 2)
+    failures, pending = verify_manifest(fileset)
+    assert (failures, pending) == (["bad.hex"], ["late.hex"])
 
 
 # Adding the reports to OpenVDM's MD5 summary ---------------------------------------------------
@@ -286,11 +285,11 @@ class FakeRun:
 def written_reports(tmp_path):
     """A HookRun for SP2613 and report files in its output directory"""
     run = openvdm.resolve(cruise_config(tmp_path), openvdm.SiteConfig(), "CTD")
-    plots = run.output_dir / "SP2613_ctd_plots"
+    plots = run.output_dir / "SP2613_plots"
     plots.mkdir(parents=True)
     for name in ("cast_map.svg", "station1_ts.svg"):
         (plots / name).write_text("<svg/>")
-    pdf = run.output_dir / "SP2613_ctd_qa_report.pdf"
+    pdf = run.output_dir / "SP2613_qa_report.pdf"
     pdf.write_text("%PDF")
     return run, [pdf, plots]
 
@@ -314,9 +313,9 @@ def test_queue_md5_update(tmp_path, monkeypatch):
             str(install / "utils/update_md5_summary.py"),
             "--cruiseID",
             "SP2613",
-            "Products/CTD_QA/SP2613_ctd_plots/cast_map.svg",
-            "Products/CTD_QA/SP2613_ctd_plots/station1_ts.svg",
-            "Products/CTD_QA/SP2613_ctd_qa_report.pdf",
+            "Products/CTD_QA/SP2613_plots/cast_map.svg",
+            "Products/CTD_QA/SP2613_plots/station1_ts.svg",
+            "Products/CTD_QA/SP2613_qa_report.pdf",
         ]
     ]
 
@@ -391,7 +390,7 @@ def openvdm_api(tmp_path, api_response):
 
 
 def test_hook_writes_reports_into_the_extra_directory(
-    openvdm_api, api_response, tmp_path, monkeypatch, caplog
+    openvdm_api, api_response, tmp_path, monkeypatch, caplog, capsys
 ):
     site_root, cruise_dir = openvdm_api
     # With --site-root, OpenVDM's MD5 script is looked for in the default install
@@ -415,38 +414,33 @@ def test_hook_writes_reports_into_the_extra_directory(
     assert not (cruise_dir / "Products").exists()
 
     args = ["openvdm", "CTD", "--site-root", site_root, "--changed-files=CTD/SP2613_Station4.bl"]
-    assert main(args) == 0
-    output = cruise_dir / "Products/CTD_QA"
-    for name in (
-        "SP2613_ctd_qa.2.0.xml",
-        "SP2613_ctd_qa_report.pdf",
-        "SP2613_ctd_qa.ipynb",
-        "SP2613_ctd_cruise.toml",
-    ):
-        assert (output / name).exists(), name
-    assert len(list((output / "SP2613_ctd_plots").glob("*.svg"))) == 13
-
-    root = ET.parse(output / "SP2613_ctd_qa.2.0.xml").getroot()
-    assert root.findtext("r2r:identifier", namespaces=NS) == "SP2613_ctd_qa"
-    ratings = {
-        t.get("name"): t.findtext("r2r:rating", namespaces=NS)
-        for t in root.iter(f"{{{R2R_NAMESPACE}}}test")
-    }
+    # An R2R fileset ID from an older hook command is accepted and ignored
+    assert main([*args, "--fileset-id", "169847"]) == 0
+    captured = capsys.readouterr()
+    assert "--fileset-id is ignored" in captured.err
     # Checksums from OpenVDM's MD5 summary; the cruise box from OpenVDM's cruiseExtent
-    assert set(ratings.values()) == {"G"}, ratings
-    assert root.findtext("r2r:certificate/r2r:rating", namespaces=NS) == "G"
+    assert "integrity checks: 0 warnings/failures" in captured.out
+    output = cruise_dir / "Products/CTD_QA"
+    assert {p.name for p in output.iterdir()} == {
+        "SP2613_qa_report.pdf",
+        "SP2613_plots",
+        "SP2613_qa.ipynb",
+        "SP2613_cruise.toml",
+    }
+    assert len(list((output / "SP2613_plots").glob("*.svg"))) == 13
+    assert type(load_config(output / "SP2613_cruise.toml")) is QAConfig
 
     # The notebook re-runs from the snapshot of what OpenVDM supplied
-    notebook = (output / "SP2613_ctd_qa.ipynb").read_text()
-    assert "SP2613_ctd_cruise.toml" in notebook
+    notebook = (output / "SP2613_qa.ipynb").read_text()
+    assert "SP2613_cruise.toml" in notebook and "r2r" not in notebook
 
     # Every report goes to OpenVDM's MD5 summary; a failure to queue that doesn't fail the hook
     (command,) = md5_update.commands
     assert command[2:4] == ["--cruiseID", "SP2613"]
     queued = set(command[4:])
     assert {
-        "Products/CTD_QA/SP2613_ctd_cruise.toml",
-        "Products/CTD_QA/SP2613_ctd_qa.ipynb",
+        "Products/CTD_QA/SP2613_cruise.toml",
+        "Products/CTD_QA/SP2613_qa.ipynb",
     } < queued
     assert len([f for f in queued if f.endswith(".svg")]) == 13
     assert "the reports aren't in OpenVDM's MD5 summary" in caplog.text
@@ -467,39 +461,38 @@ def test_config_from_openvdm_reports_gaps(openvdm_api, tmp_path, capsys):
     site.write_text('[vessel]\nid = "32QU"\nname = "Sproul"\n')
     configs = tmp_path / "configs"
     args = ["config-from-openvdm", "--site-root", site_root, "--site-config", str(site)]
-    assert main([*args, "--fileset-id", "169847", "-o", str(configs)]) == 0
+    assert main([*args, "-o", str(configs)]) == 0
 
-    config = load_cruise_config(configs / "SP2613.toml")
-    assert (config.cruise_id, config.fileset_id, config.vessel_id) == ("SP2613", "169847", "32QU")
+    config = load_config(configs / "SP2613.toml")
+    assert (config.cruise_id, config.vessel_name) == ("SP2613", "Sproul")
     assert (config.depart_date, config.arrive_date) == (date(2026, 7, 9), date(2026, 7, 10))
     assert config.extent is None
     assert config.manifest_path == tmp_path / "warehouse/SP2613/MD5_Summary.txt"
     err = capsys.readouterr().err
-    assert "cruise extent from none" in err and "Lat/Lon test is GREY (N)" in err
-    assert "no R2R port IDs" in err and "no end date" not in err
+    assert "cruise extent from none" in err and "the area check is n/a" in err
+    assert "the site config's [vessel] id isn't used" in err and "no end date" not in err
     # The notes are kept in the file, for whoever reviews it
-    assert "# Note: no cruise extent" in (configs / "SP2613.toml").read_text()
+    text = (configs / "SP2613.toml").read_text()
+    assert "# Note: no cruise extent" in text and "vessel_id" not in text
 
     # The file isn't replaced without --force
     assert main([*args, "-o", str(configs)]) == 1
     assert "use --force" in capsys.readouterr().err
     assert main([*args, "-o", str(configs), "--force"]) == 0
-    assert load_cruise_config(configs / "SP2613.toml").fileset_id == ""
 
 
 def test_config_from_openvdm_to_stdout(openvdm_api, api_response, tmp_path, capsys):
     site_root, _ = openvdm_api
-    api_response |= {"cruiseEndDate": "", "cruiseStartPortID": 100055, "cruiseEndPortID": "100055"}
+    api_response |= {"cruiseEndDate": ""}
     api_response["cruiseExtent"] = SP2613_EXTENT
     assert main(["config-from-openvdm", "--site-root", site_root, "-o", "-"]) == 0
     captured = capsys.readouterr()
     data = tomllib.loads(captured.out)
-    assert data["cruise"]["depart_port"] == {"name": "San Diego, CA", "port_id": "100055"}
     assert data["cruise"]["arrive_date"] == date.today()  # noqa: DTZ011 - a calendar date
     assert data["cruise"]["extent"]["westernmost"] == -117.3773
+    assert "depart_port" not in data["cruise"]
     assert "cruise extent from openvdm" in captured.err
     assert "no end date; arrive_date is today" in captured.err
-    assert "no R2R port IDs" not in captured.err and "no vessel ID" in captured.err
 
 
 def test_config_from_openvdm_explains_missing_configuration(openvdm_api, capsys):
@@ -514,19 +507,19 @@ def test_config_from_openvdm_with_openvdm_yaml(openvdm_api, tmp_path, capsys):
     openvdm_yaml.write_text(yaml.safe_dump({"siteRoot": site_root, "vessel": VESSEL}))
     # openvdm.yaml is current, so it wins over an older ovdmConfig.json
     cruise_dir.mkdir(parents=True)
-    old_vessel = {"name": "Sproul", "r2r": {"vesselID": "32ST"}}
+    old_vessel = {"name": "Sproul"}
     (cruise_dir / "ovdmConfig.json").write_text(json.dumps({"vessel": old_vessel}))
     args = ["config-from-openvdm", "--openvdm-config", str(openvdm_yaml), "-o", "-"]
     assert main(args) == 0
     captured = capsys.readouterr()
     cruise = tomllib.loads(captured.out)["cruise"]
-    assert (cruise["vessel_id"], cruise["vessel_name"]) == ("32QU", "Robert Gordon Sproul")
+    assert cruise["vessel_name"] == "Robert Gordon Sproul" and "vessel_id" not in cruise
     assert "vessel settings from openvdm.yaml" in captured.err
 
     # With --site-root there's no openvdm.yaml: the cruise's ovdmConfig.json
     assert main(["config-from-openvdm", "--site-root", site_root, "-o", "-"]) == 0
     captured = capsys.readouterr()
-    assert tomllib.loads(captured.out)["cruise"]["vessel_id"] == "32ST"
+    assert tomllib.loads(captured.out)["cruise"]["vessel_name"] == "Sproul"
     assert "vessel settings from ovdmConfig.json" in captured.err
 
 
@@ -538,3 +531,18 @@ def test_openvdm_yaml_not_found(tmp_path, capsys):
     assert f"no openvdm.yaml at {missing}" in err and "--site-root" in err
     assert main(["config-from-openvdm", "--openvdm-config", str(missing), "-o", "-"]) == 1
     assert "give its path with --openvdm-config" in capsys.readouterr().err
+
+
+# Without the openvdm extra ---------------------------------------------------------------------
+
+
+def test_without_pyyaml(tmp_path, monkeypatch, capsys):
+    monkeypatch.setitem(sys.modules, "yaml", None)  # import yaml raises ImportError
+    openvdm_yaml = tmp_path / "openvdm.yaml"
+    openvdm_yaml.write_text('siteRoot: "http://127.0.0.1/"\n')
+    assert main(["config-from-openvdm", "--openvdm-config", str(openvdm_yaml), "-o", "-"]) == 1
+    assert "uv sync --extra openvdm" in capsys.readouterr().err
+    # The core commands don't need it
+    fileset = tmp_path / "MY_CASTS"
+    fileset.mkdir()
+    assert main(["run", str(fileset), "-o", str(tmp_path / "output")]) == 0

@@ -6,11 +6,12 @@ import numpy as np
 import pytest
 
 from sbe_qa_processing.cast import CastData
-from sbe_qa_processing.config import CruiseConfig, Extent
+from sbe_qa_processing.config import CruiseConfig, Extent, QAConfig
 from sbe_qa_processing.fileset import Cast, Fileset, ManifestEntry, md5sum
 from sbe_qa_processing.hdr import Header
 from sbe_qa_processing.integrity import (
     area_check,
+    bounding_extent,
     checksum_check,
     dates_check,
     nav_every_scan_check,
@@ -222,3 +223,51 @@ def test_run_integrity_checks(tmp_path):
     assert by_name["Raw files complete"].detail == "DeckTest: missing .hdr"
     assert by_name["Checksums match the manifest"].status == NA
     assert by_name["Deck-test casts"].detail == "DeckTest"
+
+
+@pytest.mark.parametrize(
+    "positions, expected",
+    [
+        ([(32.6, -117.3)], Extent(-117.3, -117.3, 32.6, 32.6)),
+        ([(32.6, -117.3), (33.0, -117.2)], Extent(-117.3, -117.2, 32.6, 33.0)),
+        # across the antimeridian, the smaller box
+        ([(-17.0, 179.5), (-17.5, -179.2)], Extent(179.5, -179.2, -17.5, -17.0)),
+        ([], None),
+    ],
+)
+def test_bounding_extent(positions, expected):
+    assert bounding_extent(positions) == expected
+
+
+def test_coverage_without_a_config(tmp_path):
+    casts = [
+        cast(
+            "Station1",
+            header=at("Jul 09 2026 10:00:00"),
+            latitude=np.array([32.6]),
+            longitude=np.array([-117.3]),
+        ),
+        cast(
+            "Station2",
+            header=at("Jul 10 2026 11:30:00"),
+            latitude=np.array([33.0]),
+            longitude=np.array([-117.2]),
+        ),
+        # left out: a deck test, and a position and time that aren't plausible
+        cast("DeckTest", header=at("Jul 01 2026 10:00:00")),
+        cast(
+            "Station3",
+            header=at("Jan 01 1980 00:00:00"),
+            latitude=np.array([0.0]),
+            longitude=np.array([0.0]),
+        ),
+    ]
+    fileset = Fileset(tmp_path, tmp_path, [c.cast for c in casts])
+    result = run_integrity_checks(fileset, casts, QAConfig(), NOW)
+    by_name = {c.name: c for c in result.fileset}
+    assert by_name["Cast times"].value == "2026-07-09 10:00 to 2026-07-10 11:30 UTC"
+    assert by_name["Cast positions"].value == "-117.3 to -117.2 E, 32.6 to 33 N"
+    assert by_name["Position inside the expected area"].value == "no expected area in the config"
+    assert (
+        by_name["Cast time inside the expected dates"].value == "no expected dates in the config"
+    )

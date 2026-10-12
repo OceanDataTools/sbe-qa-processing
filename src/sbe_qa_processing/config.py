@@ -1,27 +1,27 @@
-"""Cruise configuration: the metadata R2R normally takes from its catalog, plus QA thresholds.
+"""QA configuration. Every field is optional: the QA runs without a config at all.
 
-A cruise TOML looks like::
+A config TOML looks like::
 
     [cruise]
-    id = "SP2613"
+    id = "SP2613"           # the reports' title; default: the fileset directory's name
     name = "..."
-    vessel_id = "32ST"
     vessel_name = "Sproul"
-    operator_id = "edu.ucsd.sio"
-    depart_date = 2026-07-09
+    depart_date = 2026-07-09   # expected dates, for the integrity checks
     arrive_date = 2026-07-09
 
-    [cruise.extent]
+    [cruise.extent]         # expected area, for the integrity checks and the map
     westernmost = -117.38
     easternmost = -117.22
     southernmost = 32.59
     northernmost = 32.71
 
-    [fileset]
-    id = 169847
-
     [thresholds]            # optional, defaults below
     temperature_difference = 0.01
+
+A cruise as R2R catalogs it adds R2R's IDs (``[cruise] vessel_id``, ``operator_id``,
+``scheduler_id``), ports (``[cruise.depart_port]``, ``[cruise.arrive_port]``), ``[fileset] id``
+and ``[provenance]``, and needs the cruise ID and dates. Such a config loads as a CruiseConfig,
+which the R2R tests and XML need.
 """
 
 import json
@@ -94,36 +94,61 @@ class Thresholds:
     max_lost_scan_percent: float = 0.1
     # [days] calibrations older than this at the time of the cast are flagged
     max_calibration_age_days: int = 365
-    # [%] R2R-style tests: a test is YELLOW at or above this pass percentage, RED below
-    yellow_minimum_percent: float = 50.0
 
 
-@dataclass
-class CruiseConfig:
+# [%] R2R's NAV tests are YELLOW at or above this pass percentage, RED below
+YELLOW_MINIMUM_PERCENT = 50.0
+# [thresholds] key for it in a cruise TOML; R2R's, so not one of the Thresholds
+YELLOW_MINIMUM_KEY = "yellow_minimum_percent"
+
+
+@dataclass(kw_only=True)
+class QAConfig:
+    """What the core QA uses. Every field is optional"""
+
+    cruise_id: str = ""  # the reports' title; run_qa defaults it to the fileset directory's name
+    cruise_name: str = ""
+    # Report header metadata, shown when given
+    cruise_pi: str = ""
+    cruise_location: str = ""
+    vessel_name: str = ""
+    contact_institution: str = ""
+    contact_email: str = ""
+    # Expected area and dates. Without them, the integrity checks that need them are n/a, and
+    # without an area R2R's NAV location test is GREY (N)
+    extent: Extent | None = None
+    depart_date: date | None = None
+    arrive_date: date | None = None
+    # Checksum manifest for a plain directory (e.g. OpenVDM's MD5 summary): "<md5> <path>" lines,
+    # with paths relative to the manifest's directory. A BagIt bag uses its own manifest-md5.txt
+    manifest_path: Path | None = None
+    thresholds: Thresholds = field(default_factory=Thresholds)
+
+    @property
+    def identifier(self) -> str:
+        """The reports' file name prefix"""
+        return self.cruise_id
+
+
+@dataclass(kw_only=True)
+class CruiseConfig(QAConfig):
+    """A cruise as R2R catalogs it: the core config plus R2R's IDs, ports and provenance, with
+    the cruise ID and dates required. The R2R tests and XML need it
+    """
+
     cruise_id: str
     depart_date: date
     arrive_date: date
-    # None when no bounding box is known; the NAV location test is then GREY (N)
-    extent: Extent | None = None
     # R2R's fileset ID, assigned after submission; optional
     fileset_id: str = ""
-    cruise_name: str = ""
-    cruise_pi: str = ""
-    cruise_location: str = ""
     vessel_id: str = ""
-    vessel_name: str = ""
     operator_id: str = ""
     scheduler_id: str = ""
     depart_port: Port = field(default_factory=Port)
     arrive_port: Port = field(default_factory=Port)
     distro_type: str = "post-cruise"
-    contact_institution: str = ""
     contact_institution_id: str = ""
-    contact_email: str = ""
-    # Checksum manifest for a plain directory (e.g. OpenVDM's MD5 summary): "<md5> <path>" lines,
-    # with paths relative to the manifest's directory. A BagIt bag uses its own manifest-md5.txt
-    manifest_path: Path | None = None
-    thresholds: Thresholds = field(default_factory=Thresholds)
+    yellow_minimum_percent: float = YELLOW_MINIMUM_PERCENT
 
     @property
     def identifier(self) -> str:
@@ -146,34 +171,47 @@ def _thresholds(table: dict) -> Thresholds:
     return Thresholds(**values)
 
 
-def load_config(path: Path | str) -> CruiseConfig:
+# What a CruiseConfig needs, from [cruise]
+R2R_REQUIRED = ("id", "depart_date", "arrive_date")
+
+
+def load_config(path: Path | str) -> QAConfig:
+    """A config TOML. One with the cruise ID and dates R2R needs loads as a CruiseConfig"""
     with open(path, "rb") as file:
         data = tomllib.load(file)
-    cruise = data["cruise"]
+    cruise = data.get("cruise", {})
     provenance = data.get("provenance", {})
     fileset = data.get("fileset", {})
     manifest = fileset.get("manifest")
-    return CruiseConfig(
-        cruise_id=str(cruise["id"]),
-        fileset_id=str(fileset.get("id", "")),
-        depart_date=_as_date(cruise["depart_date"]),
-        arrive_date=_as_date(cruise["arrive_date"]),
-        extent=Extent(**cruise["extent"]) if "extent" in cruise else None,
+    thresholds = dict(data.get("thresholds", {}))
+    yellow_minimum = thresholds.pop(YELLOW_MINIMUM_KEY, YELLOW_MINIMUM_PERCENT)
+    core = QAConfig(
+        cruise_id=str(cruise.get("id", "")),
         cruise_name=cruise.get("name", ""),
         cruise_pi=cruise.get("pi", ""),
         cruise_location=cruise.get("location", ""),
-        vessel_id=cruise.get("vessel_id", ""),
         vessel_name=cruise.get("vessel_name", ""),
+        contact_institution=provenance.get("contact_institution", ""),
+        contact_email=provenance.get("contact_email", ""),
+        extent=Extent(**cruise["extent"]) if "extent" in cruise else None,
+        depart_date=_as_date(cruise["depart_date"]) if "depart_date" in cruise else None,
+        arrive_date=_as_date(cruise["arrive_date"]) if "arrive_date" in cruise else None,
+        manifest_path=(Path(path).parent / manifest).resolve() if manifest else None,
+        thresholds=_thresholds(thresholds),
+    )
+    if not all(key in cruise for key in R2R_REQUIRED):
+        return core
+    return CruiseConfig(
+        **{name: getattr(core, name) for name in fields_of(QAConfig)},
+        fileset_id=str(fileset.get("id", "")),
+        vessel_id=cruise.get("vessel_id", ""),
         operator_id=cruise.get("operator_id", ""),
         scheduler_id=cruise.get("scheduler_id", ""),
         depart_port=Port(**cruise.get("depart_port", {})),
         arrive_port=Port(**cruise.get("arrive_port", {})),
         distro_type=provenance.get("distro_type", "post-cruise"),
-        contact_institution=provenance.get("contact_institution", ""),
         contact_institution_id=provenance.get("contact_institution_id", ""),
-        contact_email=provenance.get("contact_email", ""),
-        manifest_path=(Path(path).parent / manifest).resolve() if manifest else None,
-        thresholds=_thresholds(data.get("thresholds", {})),
+        yellow_minimum_percent=yellow_minimum,
     )
 
 
@@ -218,7 +256,12 @@ def config_to_toml(config: CruiseConfig) -> str:
         if getattr(config, k)
     }
     lines += ["", "[provenance]"] + [f"{k} = {_toml_value(v)}" for k, v in provenance.items()]
-    lines += thresholds_toml(config.thresholds)
+    thresholds = thresholds_toml(config.thresholds)
+    if config.yellow_minimum_percent != YELLOW_MINIMUM_PERCENT:
+        thresholds = (thresholds or ["", "[thresholds]"]) + [
+            f"{YELLOW_MINIMUM_KEY} = {config.yellow_minimum_percent}"
+        ]
+    lines += thresholds
     return "\n".join(lines) + "\n"
 
 

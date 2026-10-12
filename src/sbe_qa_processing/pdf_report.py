@@ -1,5 +1,5 @@
-"""Writes the PDF QA report: an R2R certificate summary, a fileset overview, then two pages per
-converted cast.
+"""Writes the PDF QA report: an R2R certificate summary (for a CruiseConfig), a fileset overview,
+then two pages per converted cast.
 
 Every plot is first written as an SVG file, and the PDF embeds those same SVGs as vector
 drawings (ReportLab with svglib), so the figures stay sharp at any zoom and the SVGs can be
@@ -33,6 +33,7 @@ from svglib.svglib import svg2rlg
 
 from sbe_qa_processing import plots
 from sbe_qa_processing.bottles import bottle_fires
+from sbe_qa_processing.config import CruiseConfig
 from sbe_qa_processing.loadout import cast_loadout, instrument_settings
 from sbe_qa_processing.qa import QAResult
 from sbe_qa_processing.science import FAIL, PASS, WARN
@@ -152,27 +153,38 @@ def _tint(hex_color: str, alpha: float = 0.35) -> colors.Color:
 
 def _cruise_facts(config) -> list[str]:
     """Cruise metadata for the report header, leaving out what isn't known"""
-    ports = " to ".join(p.name for p in (config.depart_port, config.arrive_port) if p.name)
+    r2r = isinstance(config, CruiseConfig)
+    vessel = config.vessel_name or (config.vessel_id if r2r else "")
+    ports = (
+        " to ".join(p.name for p in (config.depart_port, config.arrive_port) if p.name)
+        if r2r
+        else ""
+    )
+    dates = (
+        f"{config.depart_date} to {config.arrive_date}"
+        if config.depart_date and config.arrive_date
+        else ""
+    )
     facts = [
         f"PI {config.cruise_pi}" if config.cruise_pi else "",
-        f"vessel {config.vessel_name or config.vessel_id}"
-        if (config.vessel_name or config.vessel_id)
-        else "",
-        f"{config.depart_date} to {config.arrive_date}",
+        f"vessel {vessel}" if vessel else "",
+        dates,
         ports,
         config.cruise_location,
-        f"R2R fileset {config.fileset_id}" if config.fileset_id else "",
+        f"R2R fileset {config.fileset_id}" if r2r and config.fileset_id else "",
+        f"contact {config.contact_institution}" if config.contact_institution else "",
     ]
     return [fact for fact in facts if fact]
 
 
-def _certificate(result: QAResult) -> list[Flowable]:
-    config, r2r = result.config, result.r2r
-    story = [
+def _title(result: QAResult) -> list[Flowable]:
+    config = result.config
+    facts = _cruise_facts(config)
+    return [
         Paragraph(f"SBE 9/911plus QA report: {config.cruise_id}", TITLE),
         Paragraph(config.cruise_name or "", BODY),
         Spacer(1, 4),
-        Paragraph(" · ".join(_cruise_facts(config)), SMALL),
+        *([Paragraph(" · ".join(facts), SMALL)] if facts else []),
         Paragraph(
             f"Generated {result.finished:%Y-%m-%d %H:%M} UTC by "
             + ", ".join(f"{k} {v}" for k, v in result.versions.items()),
@@ -181,6 +193,11 @@ def _certificate(result: QAResult) -> list[Flowable]:
         Paragraph(f"Source: {result.fileset.root}", SMALL),
         Spacer(1, 10),
     ]
+
+
+def _certificate(result: QAResult) -> list[Flowable]:
+    r2r = result.r2r
+    story = []
     banner = Table(
         [[Paragraph(f"R2R rating: {RATING_NAMES[r2r.rating]} ({r2r.rating})", BANNER)]],
         colWidths=[FRAME_WIDTH],
@@ -445,10 +462,15 @@ def write_pdf(result: QAResult, path: Path | str, plots_dir: Path | str | None =
         topMargin=MARGIN,
         bottomMargin=MARGIN,
         title=title,
-        subject=f"R2R rating {result.r2r.rating}",
+        subject=f"R2R rating {result.r2r.rating}"
+        if result.r2r
+        else "Integrity and science checks",
         creator=f"sbe-qa-processing {result.versions['sbe-qa-processing']}",
     )
-    story = _certificate(result) + [PageBreak()] + _overview(result, svgs)
+    story = _title(result)
+    if result.r2r is not None:
+        story += _certificate(result) + [PageBreak()]
+    story += _overview(result, svgs)
     for data in result.science_casts:
         story += _cast(result, data, svgs)
     document.build(story, onFirstPage=decorate, onLaterPages=decorate)

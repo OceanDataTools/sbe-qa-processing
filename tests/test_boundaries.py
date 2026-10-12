@@ -6,9 +6,8 @@ from pathlib import Path
 import pytest
 
 PACKAGE = Path(__file__).parents[1] / "src" / "sbe_qa_processing"
-# cli.py puts every command together; openvdm.py and site_setup.py become an integration in
-# issue 21
-NOT_CORE = {"cli.py", "openvdm.py", "site_setup.py"}
+# cli.py puts every command together
+NOT_CORE = {"cli.py"}
 
 
 def imported_modules(path: Path) -> set[str]:

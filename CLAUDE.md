@@ -57,7 +57,7 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(config, fileset)` is the pip
    - Failures go into `errors` (`"xmlcon"`, `"hex"`, `"conversion"`) instead of raising, so one bad cast never stops a fileset.
    - Salinity uses `gsw.SP_from_C`.
 4. **`status.py`** decodes the 911plus status bits: pump, bottom contact, bottle confirm, modem.
-5. **`r2r.py`** holds the R2R tests and infos and the G/Y/R/N/X ratings.
+5. **`integrity.py`** holds the integrity checks (raw files, checksums, positions, cast times, serial numbers) for any fileset, per cast and summarized for the fileset, as `CheckResult`s. Its per-cast predicates (`cast_position`, `same_serial`, `verify_manifest`, ...) are shared with `r2r.py`. **`r2r.py`** holds the R2R tests and infos and the G/Y/R/N/X ratings.
    - R2R rules that aren't documented upstream were inferred, and they're documented in the module docstring.
    - Changing them breaks parity.
 6. **`science.py`** holds the science checks (`CheckResult` with pass/warn/fail/info/n/a), with limits in `config.Thresholds`. **`loadout.py`** builds the sensor/channel tables. **`bottles.py`** parses `.bl` bottle logs.

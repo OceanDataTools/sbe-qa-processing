@@ -4,7 +4,7 @@ Test names, descriptions, units and bounds follow R2R's reports (r2r-ctd). Where
 aren't documented, the choices here are noted and were checked against R2R's ratings for
 SP2613 (GREEN) and RR2605 (YELLOW):
 - Deck tests (file names with deck/dock/test) are left out of the NAV tests.
-- A NAV test is YELLOW when at least Thresholds.yellow_minimum_percent of casts pass.
+- A NAV test is YELLOW when at least CruiseConfig.yellow_minimum_percent of casts pass.
 - The overall rating counts individual checks (per cast or per file) across tests.
 
 The per-cast predicates (positions, serial numbers, checksums) are shared with integrity.py;
@@ -155,7 +155,7 @@ def location_test(casts: list[CastData], config: CruiseConfig) -> TestResult:
     return TestResult(
         name=name,
         description=description,
-        rating=_nav_rating(len(passed), len(casts), config.thresholds.yellow_minimum_percent),
+        rating=_nav_rating(len(passed), len(casts), config.yellow_minimum_percent),
         result=_percent(len(passed), len(casts)),
         bounds=bounds,
         passed=len(passed),
@@ -185,7 +185,7 @@ def date_test(casts: list[CastData], config: CruiseConfig) -> TestResult:
     return TestResult(
         name=name,
         description=description,
-        rating=_nav_rating(len(passed), len(casts), config.thresholds.yellow_minimum_percent),
+        rating=_nav_rating(len(passed), len(casts), config.yellow_minimum_percent),
         result=_percent(len(passed), len(casts)),
         bounds=bounds,
         passed=len(passed),

@@ -166,17 +166,6 @@ def run_science_checks(data: CastData, thresholds: Thresholds) -> list[CheckResu
                 f"≤ {thresholds.max_lost_scan_percent:g}%",
             )
         )
-    if data.latitude is not None:
-        missing = np.isnan(data.latitude) | ((data.latitude == 0) & (data.longitude == 0))
-        results.append(
-            CheckResult(
-                "NMEA position on every scan",
-                PASS if not missing.any() else WARN,
-                f"{int(missing.sum())} scans without position",
-            )
-        )
-    else:
-        results.append(CheckResult("NMEA position on every scan", NA, "not appended"))
     if data.pump is not None:
         submerged = data.pressure > 2
         share = float(np.mean(data.pump[submerged]) * 100) if submerged.any() else 0.0

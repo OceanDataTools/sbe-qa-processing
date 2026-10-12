@@ -187,6 +187,18 @@ during a cruise.
 
 ## What it checks
 
+**Integrity checks** (PDF, notebook and the command's summary), for every cast, deck tests
+included, and summarized for the fileset:
+- Raw files complete (`.hex/.dat`, `.XMLCON/.con`, `.hdr`; `.bl` noted) and readable.
+- Checksums against the bag's `manifest-md5.txt` or the config's `[fileset] manifest`; n/a
+  without a manifest.
+- A valid NMEA position (not 0,0), and the position on every scan.
+- A cast time that isn't before 1990 (an unset clock) or in the future, and casts in time order
+  by file name.
+- Header temperature and conductivity serial numbers match the `.XMLCON`.
+- Position inside the cruise extent and time inside the cruise dates (n/a for deck tests).
+- Informational: cast count, deck tests, casts with bottles fired, instrument model.
+
 **R2R tests** (written to the XML and the PDF):
 - Presence of all raw files: every cast has `.hex/.dat`, `.XMLCON/.con` and `.hdr`.
 - Valid checksums: every file in the bag's `manifest-md5.txt` matches. BLACK (X) without a
@@ -199,7 +211,7 @@ during a cruise.
 **Science checks** (PDF and notebook), per cast that isn't a deck test:
 - Primary/secondary temperature, conductivity and salinity agreement below 20 dbar (median).
 - Plausible ranges, Wild Edit spikes (seabirdscientific, SBE Data Processing's 2/20 σ settings).
-- Lost scans from the modulo counter, NMEA position on every scan, pump on in the water.
+- Lost scans from the modulo counter, pump on in the water.
 - Sensor calibration age: warns when a sensor's `.XMLCON` calibration date is more than
   `max_calibration_age_days` (default 365) before the cast.
 - Informational: maximum pressure, descent rate and heave, duration, bottle fires.

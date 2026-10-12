@@ -223,10 +223,24 @@ def _certificate(result: QAResult) -> list[Flowable]:
     return story
 
 
+def _checks_table(checks) -> Table:
+    rows = [[c.name, c.status, c.value, c.limit, c.detail] for c in checks]
+    styles = [
+        ("BACKGROUND", (1, i), (1, i), colors.HexColor(plots.STATUS_COLORS[c.status]))
+        for i, c in enumerate(checks, start=1)
+    ]
+    return _table(
+        ["Check", "Status", "Value", "Limit", "Detail"],
+        rows,
+        [0.27, 0.08, 0.18, 0.12, 0.35],
+        styles,
+    )
+
+
 def _overview(result: QAResult, svgs: dict[str, Path]) -> list[Flowable]:
     rows, styles = [], []
     for i, data in enumerate(result.casts, start=1):
-        checks = result.science.get(data.name, [])
+        checks = result.integrity.casts.get(data.name, []) + result.science.get(data.name, [])
         counts = {s: sum(1 for c in checks if c.status == s) for s in (PASS, WARN, FAIL)}
         status = FAIL if counts[FAIL] else WARN if counts[WARN] else PASS if checks else "n/a"
         note = "deck test" if data.cast.is_deck_test else "; ".join(data.errors.values())
@@ -250,6 +264,11 @@ def _overview(result: QAResult, svgs: dict[str, Path]) -> list[Flowable]:
             rows,
             [0.22, 0.09, 0.11, 0.08, 0.16, 0.34],
             styles,
+        ),
+        Paragraph("Pass / warn / fail counts the integrity and science checks.", SMALL),
+        Spacer(1, 12),
+        KeepTogether(
+            [Paragraph("Integrity checks", SUBHEADING), _checks_table(result.integrity.fileset)]
         ),
     ]
 
@@ -353,17 +372,11 @@ def _bottle_page(data, svgs: dict[str, Path]) -> list[Flowable]:
 
 
 def _cast(result: QAResult, data, svgs: dict[str, Path]) -> list[Flowable]:
-    """Per cast: sensors and checks; then the pressure record (with the bottle fire table when
+    """Per cast: sensors, integrity and science checks; then the pressure record (with the bottle fire table when
     bottles were fired); then the TS diagram, which always follows the pressure record; then
     profiles. Without bottle fires, the pressure record and TS diagram share a page
     """
     name = data.name
-    checks = result.science[name]
-    rows = [[c.name, c.status, c.value, c.limit, c.detail] for c in checks]
-    styles = [
-        ("BACKGROUND", (1, i), (1, i), colors.HexColor(plots.STATUS_COLORS[c.status]))
-        for i, c in enumerate(checks, start=1)
-    ]
     tables = [
         PageBreak(),
         Paragraph(name, HEADING),
@@ -371,14 +384,13 @@ def _cast(result: QAResult, data, svgs: dict[str, Path]) -> list[Flowable]:
         Spacer(1, 6),
         KeepTogether(
             [
-                Paragraph("Checks", SUBHEADING),
-                _table(
-                    ["Check", "Status", "Value", "Limit", "Detail"],
-                    rows,
-                    [0.27, 0.08, 0.18, 0.12, 0.35],
-                    styles,
-                ),
+                Paragraph("Integrity checks", SUBHEADING),
+                _checks_table(result.integrity.casts[name]),
             ]
+        ),
+        Spacer(1, 6),
+        KeepTogether(
+            [Paragraph("Science checks", SUBHEADING), _checks_table(result.science[name])]
         ),
     ]
     profiles = [

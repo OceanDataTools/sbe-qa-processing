@@ -6,16 +6,23 @@ SP2613 (GREEN) and RR2605 (YELLOW):
 - Deck tests (file names with deck/dock/test) are left out of the NAV tests.
 - A NAV test is YELLOW when at least Thresholds.yellow_minimum_percent of casts pass.
 - The overall rating counts individual checks (per cast or per file) across tests.
+
+The per-cast predicates (positions, serial numbers, checksums) are shared with integrity.py;
+only R2R's names, aggregation and ratings live here.
 """
 
 from dataclasses import dataclass, field
 
-import numpy as np
-
-from sbe_qa_processing.bottles import parse_bottle_log
 from sbe_qa_processing.cast import CastData
 from sbe_qa_processing.config import CruiseConfig
-from sbe_qa_processing.fileset import Fileset, md5sum
+from sbe_qa_processing.fileset import Fileset
+from sbe_qa_processing.integrity import (
+    bottles_fired,
+    cast_position,
+    nav_for_all_scans,
+    same_serial,
+    verify_manifest,
+)
 
 GREEN, YELLOW, RED, GREY, BLACK = "G", "Y", "R", "N", "X"
 
@@ -74,37 +81,6 @@ def _percent(passed: int, total: int) -> float:
     return round(100 * passed / total) if total else 0
 
 
-def _same_serial(a: str | None, b: str | None) -> bool:
-    if not a or not b:
-        return False
-    return a.strip().lstrip("0").upper() == b.strip().lstrip("0").upper()
-
-
-def bottles_fired(cast) -> int:
-    """Number of bottle fires recorded in a cast's .bl file"""
-    return len(parse_bottle_log(cast.bottles)) if cast.bottles is not None else 0
-
-
-def cast_position(data: CastData) -> tuple[float, float] | None:
-    """Header NMEA position, else the first valid position appended to the scans"""
-    header = data.header
-    if header is not None and header.latitude is not None and header.longitude is not None:
-        return header.latitude, header.longitude
-    if data.latitude is not None:
-        valid = ~(np.isnan(data.latitude) | ((data.latitude == 0) & (data.longitude == 0)))
-        if valid.any():
-            index = int(np.argmax(valid))
-            return float(data.latitude[index]), float(data.longitude[index])
-    return None
-
-
-def nav_for_all_scans(data: CastData) -> bool:
-    if data.latitude is None or data.scans == 0:
-        return False
-    missing = np.isnan(data.latitude) | ((data.latitude == 0) & (data.longitude == 0))
-    return not missing.any()
-
-
 def _nav_rating(passed: int, total: int, yellow_minimum: float) -> str:
     if total and passed == total:
         return GREEN
@@ -140,17 +116,7 @@ def checksum_test(fileset: Fileset) -> TestResult:
             uom="Unitless",
             failures=["no manifest-md5.txt"],
         )
-    failures, pending = [], []
-    for entry in fileset.manifest:
-        path = fileset.root / entry.path
-        if (
-            path.exists()
-            and fileset.manifest_mtime is not None
-            and path.stat().st_mtime > fileset.manifest_mtime
-        ):
-            pending.append(entry.path)
-        elif not path.exists() or md5sum(path) != entry.md5:
-            failures.append(entry.path)
+    failures, pending = verify_manifest(fileset)
     total = len(fileset.manifest) - len(pending)
     return TestResult(
         name="Valid Checksum for All Files in Manifest",
@@ -266,7 +232,7 @@ def run_r2r_tests(fileset: Fileset, casts: list[CastData], config: CruiseConfig)
         if c.header
         and c.config
         and c.config.sensor("temperature")
-        and not _same_serial(
+        and not same_serial(
             c.header.temperature_serial, c.config.sensor("temperature").serial_number
         )
     ]
@@ -276,7 +242,7 @@ def run_r2r_tests(fileset: Fileset, casts: list[CastData], config: CruiseConfig)
         if c.header
         and c.config
         and c.config.sensor("conductivity")
-        and not _same_serial(
+        and not same_serial(
             c.header.conductivity_serial, c.config.sensor("conductivity").serial_number
         )
     ]

@@ -35,7 +35,7 @@ Use uv. Run from the repo root.
 - Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [-o configs/site.toml] [--force]`
 - Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL --site-config site.toml [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`.
 
-`data/` (downloaded filesets) and `output/` (generated reports) are gitignored. `configs/` holds the three validation cruises' R2R cruise TOMLs and `site.example.toml`.
+`data/` (downloaded filesets) and `output/` (generated reports) are gitignored. `configs/` holds the three validation cruises' R2R cruise TOMLs, `site.example.toml` and `theme.example.toml`.
 
 ## seabirdscientific dependency
 
@@ -65,8 +65,9 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
 6. **`science.py`** holds the science checks (`CheckResult` with pass/warn/fail/info/n/a), with limits in `config.Thresholds`. **`loadout.py`** builds the sensor/channel tables. **`bottles.py`** parses `.bl` bottle logs.
 7. **`config.py`** handles the core config TOML: `QAConfig` (every field optional; tables only integrations use are ignored), `Extent` and `Thresholds`.
 8. **Writers:**
-   - `pdf_report.py` uses ReportLab and embeds the SVGs as vectors via svglib.
-   - `plots.py` has one matplotlib Figure per function, shared by the PDF and the notebook.
+   - `theme.py` holds `Theme` (page, fonts, scales, logo, footer, palette and `Colors`), loaded from a `--theme` file and the config's `[theme]` table (`QAConfig.theme`, applied on top) by `resolve_theme`. The writers take the theme explicitly; `DEFAULT_THEME` is the original look.
+   - `pdf_report.py` uses ReportLab and embeds the SVGs as vectors via svglib. `layout(theme)` makes the theme concrete (page and frame sizes, registered fonts, paragraph styles) as a `Layout` passed to every page helper; an integration's `front` pages are a function of the same `Layout`.
+   - `plots.py` has one matplotlib Figure per function, shared by the PDF and the notebook. Each takes a `theme`, renders inside `plots.themed(theme)` (fonts) and scales explicit font sizes with `_pt`.
    - `maps.py` loads Natural Earth via cartopy, clipped to the view, and degrades to no coastlines when the data can't load.
    - `notebook.py` writes a notebook (nbformat) whose cells import this package.
 9. **`integrations/r2r/`** is R2R:
@@ -89,6 +90,7 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
 
 - Python ≥3.11 with modern syntax. Prefer dataclasses. Write short docstrings without `:param:` boilerplate, and put units in brackets in comments (`# [dbar]`).
 - Renaming a public function or module changes the generated notebook too: `notebook.py` and `integrations/r2r/reports.notebook_extras` write import lines and calls as strings. No test executes the notebook, so check by hand with `run ... --execute-notebook` and `r2r run ... --execute-notebook` after such changes.
+- Report styling comes from the theme: no colors, fonts or text sizes written into the writers or the plots. The default theme must reproduce the existing reports: SVGs are deterministic (no date, fixed `svg.hashsalt`), so compare their checksums before and after a change, and the PDFs' text and rendered pages (only the "Generated" timestamp differs).
 - The seawater deprecation warning from seabirdscientific's EOS-80 import is filtered in `cli.py`, `tests/conftest.py` and the notebook's setup cell.
 - An `Extent` with westernmost > easternmost crosses the antimeridian, as in R2R's reports and OpenVDM's `cruiseExtent`. Test positions with `Extent.contains`, never by comparing edges, and draw anything spanning the box relative to a central longitude, as `plots.cast_map` does.
 - Tests are plain pytest functions. Use small synthetic inputs where possible, and use the downloaded R2R filesets for end-to-end parity.

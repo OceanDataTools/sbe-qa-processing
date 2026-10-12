@@ -60,7 +60,9 @@ def notebook_extras(run: R2RRun, xml_name: str) -> NotebookExtras:
     )
 
 
-def write_r2r_reports(run: R2RRun, output: Path, execute_notebook: bool = False) -> list[Path]:
+def write_r2r_reports(
+    run: R2RRun, output: Path, execute_notebook: bool = False, theme_file: Path | None = None
+) -> list[Path]:
     """The R2R QA XML, then the core reports with R2R's certificate"""
     output.mkdir(parents=True, exist_ok=True)
     xml = report_paths(output, run.result.config.identifier)["xml"]
@@ -73,6 +75,7 @@ def write_r2r_reports(run: R2RRun, output: Path, execute_notebook: bool = False)
             pdf_front=certificate(run.result, run.r2r),
             pdf_subject=f"R2R rating {run.r2r.rating}",
             notebook_extras=notebook_extras(run, xml.name),
+            theme_file=theme_file,
         ),
     ]
 

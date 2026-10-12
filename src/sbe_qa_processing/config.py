@@ -150,6 +150,40 @@ def load_config(path: Path | str) -> QAConfig:
     )
 
 
+def config_to_toml(config: QAConfig) -> str:
+    """The config as TOML that load_config reads back, e.g. to snapshot what a hook resolved"""
+    cruise = {
+        "id": config.cruise_id,
+        "name": config.cruise_name,
+        "pi": config.cruise_pi,
+        "location": config.cruise_location,
+        "vessel_name": config.vessel_name,
+    }
+    lines = ["[cruise]"] + [f"{k} = {toml_value(v)}" for k, v in cruise.items() if v]
+    lines += [
+        f"{which} = {value}"
+        for which, value in (
+            ("depart_date", config.depart_date),
+            ("arrive_date", config.arrive_date),
+        )
+        if value is not None
+    ]
+    if config.extent:
+        lines += ["", "[cruise.extent]"]
+        lines += [f"{k} = {getattr(config.extent, k)}" for k in fields_of(Extent)]
+    if config.manifest_path:
+        lines += ["", "[fileset]", f"manifest = {toml_value(str(config.manifest_path))}"]
+    provenance = {
+        k: getattr(config, k)
+        for k in ("contact_institution", "contact_email")
+        if getattr(config, k)
+    }
+    if provenance:
+        lines += ["", "[provenance]"] + [f"{k} = {toml_value(v)}" for k, v in provenance.items()]
+    lines += thresholds_toml(config.thresholds)
+    return "\n".join(lines) + "\n"
+
+
 def thresholds_toml(thresholds: Thresholds) -> list[str]:
     """A [thresholds] table of the values that differ from the defaults, or nothing"""
     defaults = Thresholds()

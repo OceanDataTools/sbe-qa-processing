@@ -19,8 +19,11 @@ dependencies = [
   "svglib>=1.5",
   "cartopy>=0.24",
   "shapely>=2.0",
-  "pyyaml>=6.0",
 ]
+
+[project.optional-dependencies]
+# The OpenVDM hook reads openvdm.yaml
+openvdm = ["pyyaml>=6.0"]
 
 [project.scripts]
 sbe-qa-processing = "sbe_qa_processing.cli:main"
@@ -30,6 +33,7 @@ dev = [
   "nbclient >= 0.10",
   "ipykernel >= 6.29",
   "pytest >= 8.3",
+  "pyyaml >= 6.0",  # the openvdm extra, for its tests
   "ruff >= 0.8",
 ]
 

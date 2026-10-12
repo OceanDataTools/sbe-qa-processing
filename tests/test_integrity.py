@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from sbe_qa_processing.cast import CastData
-from sbe_qa_processing.config import CruiseConfig, Extent, QAConfig
+from sbe_qa_processing.config import Extent, QAConfig
 from sbe_qa_processing.fileset import Cast, Fileset, ManifestEntry, md5sum
 from sbe_qa_processing.hdr import Header
 from sbe_qa_processing.integrity import (
@@ -42,8 +42,8 @@ def at(time: str) -> Header:
     return header(**{"NMEA UTC (Time)": time})
 
 
-def config(**fields) -> CruiseConfig:
-    return CruiseConfig(
+def config(**fields) -> QAConfig:
+    return QAConfig(
         cruise_id="TEST", depart_date=date(2026, 7, 9), arrive_date=date(2026, 7, 10), **fields
     )
 

@@ -1,5 +1,5 @@
-"""Runs the full QA on a fileset: reads and converts every cast, then the integrity checks, the
-science checks and, for a CruiseConfig, the R2R tests.
+"""Runs the core QA on a fileset: reads and converts every cast, then the integrity and science
+checks.
 """
 
 import importlib.metadata
@@ -9,10 +9,9 @@ from pathlib import Path
 
 from sbe_qa_processing import __version__
 from sbe_qa_processing.cast import CastData, read_cast
-from sbe_qa_processing.config import CruiseConfig, QAConfig, load_config
+from sbe_qa_processing.config import QAConfig, load_config
 from sbe_qa_processing.fileset import Fileset, load_fileset
 from sbe_qa_processing.integrity import IntegrityResult, run_integrity_checks
-from sbe_qa_processing.r2r import R2RResult, run_r2r_tests
 from sbe_qa_processing.science import CheckResult, run_science_checks
 
 
@@ -22,7 +21,6 @@ class QAResult:
     fileset: Fileset
     casts: list[CastData]
     integrity: IntegrityResult
-    r2r: R2RResult | None  # only for a CruiseConfig
     science: dict[str, list[CheckResult]]
     started: datetime
     finished: datetime
@@ -68,7 +66,6 @@ def run_qa(fileset: Fileset | Path | str, config: QAConfig | Path | str | None =
     # Configuration-only entries aren't casts
     casts = [read_cast(c) for c in fileset.casts if c.raw is not None or c.header is not None]
     integrity = run_integrity_checks(fileset, casts, config)
-    r2r = run_r2r_tests(fileset, casts, config) if isinstance(config, CruiseConfig) else None
     science = {
         c.name: run_science_checks(c, config.thresholds)
         for c in casts
@@ -79,7 +76,6 @@ def run_qa(fileset: Fileset | Path | str, config: QAConfig | Path | str | None =
         fileset=fileset,
         casts=casts,
         integrity=integrity,
-        r2r=r2r,
         science=science,
         started=started,
         finished=datetime.now(UTC),

@@ -1,10 +1,11 @@
 """Integrity checks for any fileset: raw files present and readable, checksums, positions, cast
 times and sensor serial numbers.
 
-The per-cast predicates here are shared with R2R's tests (r2r.py), which rate them by R2R's
-rules. These checks use the science checks' pass/warn/fail/info/n/a instead, need no config,
-and report n/a where a check needs an expected area or dates the config doesn't give. Unlike
-R2R, they also flag invalid positions, implausible cast times and casts out of time order.
+The per-cast predicates here are shared with R2R's tests (integrations/r2r/rules.py), which
+rate them by R2R's rules. These checks use the science checks' pass/warn/fail/info/n/a
+instead, need no config, and report n/a where a check needs an expected area or dates the
+config doesn't give. Unlike R2R, they also flag invalid positions, implausible cast times and
+casts out of time order.
 """
 
 import re
@@ -33,7 +34,7 @@ class IntegrityResult:
     casts: dict[str, list[CheckResult]]  # by cast name, deck tests included
 
 
-# Predicates shared with r2r.py
+# Predicates shared with integrations/r2r/rules.py
 
 
 def missing_nav(latitude: np.ndarray, longitude: np.ndarray) -> np.ndarray:

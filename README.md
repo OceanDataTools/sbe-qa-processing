@@ -9,14 +9,15 @@
 Quality assessment for Sea-Bird **SBE 9/911plus** CTD filesets. From a fileset (a BagIt bag as
 R2R/NCEI distribute it, or a plain directory of Seasave output) and an optional config, it
 writes the files below. Their names start with the config's cruise ID, or the fileset
-directory's name without one (`<TITLE>`); for an R2R cruise, with `<CRUISE>_<FILESET>`.
+directory's name without one (`<TITLE>`). With R2R's tests (`r2r run`), they're named
+`<CRUISE>_<FILESET>`.
 
 | Output | Contents |
 |---|---|
-| `<TITLE>_qa_report.pdf` | R2R certificate (for an R2R cruise); a cast map with coastlines and a world inset; and per cast: profiles, dual-sensor differences, TS diagram, pressure record, integrity and science checks and sensor loadout |
+| `<TITLE>_qa_report.pdf` | R2R certificate (with `r2r run`); a cast map with coastlines and a world inset; and per cast: profiles, dual-sensor differences, TS diagram, pressure record, integrity and science checks and sensor loadout |
 | `<TITLE>_plots/*.svg` | Every report figure as SVG: the cast map, and each cast's profiles, TS diagram and pressure record. The PDF embeds these same SVGs as vector graphics |
 | `<TITLE>_qa.ipynb` | A notebook that re-runs the whole assessment step by step, to inspect or change it |
-| `<CRUISE>_<FILESET>_qa.2.0.xml` | For an R2R cruise only: the R2R QA 2.0 rollup report, with the same tests, infos, ratings and manifest R2R's `r2r-ctd` produces, in R2R's schema and with its stylesheet reference |
+| `<CRUISE>_<FILESET>_qa.2.0.xml` | With `r2r run` only: the R2R QA 2.0 rollup report, with the same tests, infos, ratings and manifest R2R's `r2r-ctd` produces, in R2R's schema and with its stylesheet reference |
 
 Raw `.hex` data is read and converted with
 [seabirdscientific](https://github.com/Sea-BirdScientific/seabirdscientific), installed from
@@ -79,17 +80,20 @@ northernmost = 43.0
 salinity_range = [0.0, 42.0]
 ```
 
-A cruise config with the cruise ID and both dates is an R2R cruise: `run` also runs R2R's tests
-and writes the R2R QA XML, and the reports are named `<CRUISE>_<FILESET>`. R2R's IDs, ports and
-fileset ID come from its catalog:
+### R2R
+
+The `r2r` commands add R2R's CTD tests, its rating and the R2R QA 2.0 XML. They take a cruise
+TOML with R2R's IDs, ports and fileset ID, which come from R2R's catalog:
 
 ```bash
 # from R2R's catalog API, for a cruise and CTD fileset R2R knows:
-uv run sbe-qa-processing config-from-r2r MYCRUISE 123456   # writes configs/MYCRUISE.toml
+uv run sbe-qa-processing r2r config-from-catalog MYCRUISE 123456   # writes configs/MYCRUISE.toml
 # or from an existing R2R QA 2.0 report (adds port coordinates):
-uv run sbe-qa-processing config-from-r2r-qa path/to/r2r_qa.2.0.xml   # configs/MYCRUISE.toml
-uv run sbe-qa-processing run path/to/fileset -c configs/MYCRUISE.toml -o output/MYCRUISE
+uv run sbe-qa-processing r2r config-from-qa path/to/r2r_qa.2.0.xml   # configs/MYCRUISE.toml
+uv run sbe-qa-processing r2r run configs/MYCRUISE.toml path/to/fileset -o output/MYCRUISE
 ```
+
+`run -c` takes the same cruise TOML and ignores the R2R fields.
 
 Every command is listed by `sbe-qa-processing --help`, and documents its arguments under
 `sbe-qa-processing COMMAND --help`. They share these conventions:
@@ -180,7 +184,7 @@ running the QA:
 ```bash
 uv run sbe-qa-processing config-from-openvdm --site-config configs/site.toml \
     --openvdm-config /opt/openvdm/server/etc/openvdm.yaml                      # configs/<CRUISE>.toml
-uv run sbe-qa-processing run /path/to/cruise/CTD -c configs/<CRUISE>.toml -o output/<CRUISE>
+uv run sbe-qa-processing r2r run configs/<CRUISE>.toml /path/to/cruise/CTD -o output/<CRUISE>
 ```
 
 `config-from-openvdm` takes the same OpenVDM options as the hook, plus `-o DIR` (or `-o -` for
@@ -205,7 +209,7 @@ included, and summarized for the fileset:
 - Informational: the range of cast times and positions, cast count, deck tests, casts with
   bottles fired, instrument model.
 
-**R2R tests** (written to the XML and the PDF):
+**R2R tests** (`r2r run`; written to the XML and the PDF):
 - Presence of all raw files: every cast has `.hex/.dat`, `.XMLCON/.con` and `.hdr`.
 - Valid checksums: every file in the bag's `manifest-md5.txt` matches. BLACK (X) without a
   manifest.
@@ -241,15 +245,15 @@ reports:
 Fetch them with:
 
 ```bash
-uv run sbe-qa-processing fetch-fileset SP2613 169847   # into data/SP2613_169847_ctd/
-uv run sbe-qa-processing fetch-fileset RR2605 170644
-uv run sbe-qa-processing fetch-fileset BH18-18 132368
+uv run sbe-qa-processing r2r fetch-fileset SP2613 169847   # into data/SP2613_169847_ctd/
+uv run sbe-qa-processing r2r fetch-fileset RR2605 170644
+uv run sbe-qa-processing r2r fetch-fileset BH18-18 132368
 uv run pytest
 ```
 
 R2R doesn't document every rule; the ones inferred here (deck tests excluded from NAV tests, a
 NAV test is YELLOW at ≥ 50% of casts, the overall rating counts individual per-cast checks) are
-noted in `src/sbe_qa_processing/r2r.py` and reproduce R2R's ratings for both filesets.
+noted in `src/sbe_qa_processing/integrations/r2r/rules.py` and reproduce R2R's ratings for both filesets.
 
 ## seabirdscientific version
 

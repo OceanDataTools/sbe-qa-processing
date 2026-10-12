@@ -9,7 +9,9 @@ import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sbe_qa_processing.config import R2R_NAMESPACE, Port
+from sbe_qa_processing.integrations.r2r.catalog import R2R_NAMESPACE
+from sbe_qa_processing.integrations.r2r.config import Port
+from sbe_qa_processing.integrations.r2r.rules import R2RResult
 from sbe_qa_processing.qa import QAResult
 
 STYLESHEET = "https://service.rvdata.us/stylesheets/r2r_qac_v2.0.xslt"
@@ -46,8 +48,8 @@ def _port(parent: ET.Element, name: str, port: Port) -> None:
     _sub(element, "latitude", "" if port.latitude is None else port.latitude)
 
 
-def build_qa_xml(result: QAResult) -> ET.ElementTree:
-    config = result.config
+def build_qa_xml(result: QAResult, r2r: R2RResult) -> ET.ElementTree:
+    config = result.config  # a CruiseConfig
     root = ET.Element(_tag("qareport"), {f"{{{XSI_NAMESPACE}}}schemaLocation": SCHEMA_LOCATION})
     root.append(
         ET.Comment("Rolling Deck to Repository (R2R) Quality Assessment (QA) Rollup Report")
@@ -100,9 +102,9 @@ def build_qa_xml(result: QAResult) -> ET.ElementTree:
     _sub(fileset, "proclevel", "1")
 
     certificate = _sub(root, "certificate")
-    _sub(certificate, "rating", result.r2r.rating, description=result.r2r.description)
+    _sub(certificate, "rating", r2r.rating, description=r2r.description)
     tests = _sub(certificate, "tests")
-    for test in result.r2r.tests:
+    for test in r2r.tests:
         element = _sub(tests, "test", description=test.description, name=test.name)
         _sub(element, "rating", test.rating)
         if test.result is not None:
@@ -111,13 +113,13 @@ def build_qa_xml(result: QAResult) -> ET.ElementTree:
         for bound in test.bounds:
             _sub(bounds, "bound", bound.value, name=bound.name, uom=bound.uom)
     infos = _sub(certificate, "infos")
-    for info in result.r2r.infos:
+    for info in r2r.infos:
         _sub(infos, "info", info.value, name=info.name, uom=info.uom)
 
     _sub(root, "filesetinfo_supplements")
     _sub(root, "references")
     log = _sub(root, "log")
-    for name in result.r2r.checksum_failures:
+    for name in r2r.checksum_failures:
         _sub(log, "entry", f"checksum mismatch or missing file: {name}")
     for cast in result.casts:
         for stage, message in cast.errors.items():
@@ -133,9 +135,9 @@ def build_qa_xml(result: QAResult) -> ET.ElementTree:
     return ET.ElementTree(root)
 
 
-def write_qa_xml(result: QAResult, path: Path | str) -> Path:
+def write_qa_xml(result: QAResult, r2r: R2RResult, path: Path | str) -> Path:
     path = Path(path)
-    tree = build_qa_xml(result)
+    tree = build_qa_xml(result, r2r)
     body = ET.tostring(tree.getroot(), encoding="unicode")
     path.write_text(
         "<?xml version='1.0' encoding='UTF-8'?>\n"

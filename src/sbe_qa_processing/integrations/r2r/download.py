@@ -14,7 +14,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from sbe_qa_processing.config import R2RError, fetch_r2r_records
+from sbe_qa_processing.integrations.r2r.catalog import R2RError, fetch_r2r_records
 
 R2R = "https://service.rvdata.us"
 DOWNLOAD_TIMEOUT = 120  # [s]

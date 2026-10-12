@@ -3,15 +3,14 @@ import numpy as np
 
 from sbe_qa_processing import maps, plots
 from sbe_qa_processing.cast import CastData
-from sbe_qa_processing.config import CruiseConfig, Extent
+from sbe_qa_processing.config import Extent, QAConfig
 from sbe_qa_processing.fileset import Cast
 from sbe_qa_processing.hdr import Header
 
 
 def config():
-    return CruiseConfig(
+    return QAConfig(
         cruise_id="TEST",
-        fileset_id="1",
         depart_date=__import__("datetime").date(2026, 7, 9),
         arrive_date=__import__("datetime").date(2026, 7, 9),
         extent=Extent(-117.38, -117.22, 32.59, 32.71),
@@ -89,7 +88,7 @@ def test_clipped_geometries_across_the_antimeridian(monkeypatch):
 
 def test_map_across_the_antimeridian(monkeypatch):
     monkeypatch.setattr(maps, "_feature", lambda *a: (_ for _ in ()).throw(OSError("offline")))
-    fiji = CruiseConfig(
+    fiji = QAConfig(
         cruise_id="TEST",
         depart_date=__import__("datetime").date(2026, 7, 9),
         arrive_date=__import__("datetime").date(2026, 7, 9),

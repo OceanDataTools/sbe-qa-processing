@@ -20,7 +20,6 @@ PRIMARY = "#1f5f8b"
 SECONDARY = "#d1495b"
 PAGE = (8.5, 11)  # US letter, portrait
 TS_MAX_POINTS = 4000
-RATING_COLORS = {"G": "#2e8b57", "Y": "#e0b000", "R": "#c0392b", "N": "#8c8c8c", "X": "#222222"}
 STATUS_COLORS = {
     "pass": "#d8f0df",
     "warn": "#fff1bf",

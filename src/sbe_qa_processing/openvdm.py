@@ -31,16 +31,14 @@ from pathlib import Path
 import yaml
 
 from sbe_qa_processing.config import (
-    CruiseConfig,
     Extent,
-    Port,
     Thresholds,
-    _thresholds,
-    _toml_value,
-    config_to_toml,
     fields_of,
+    thresholds_from_table,
     thresholds_toml,
+    toml_value,
 )
+from sbe_qa_processing.integrations.r2r.config import CruiseConfig, Port, config_to_toml
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +125,7 @@ def load_site_config(path: Path | str | None) -> SiteConfig:
         contact_institution=provenance.get("contact_institution", ""),
         contact_institution_id=provenance.get("contact_institution_id", ""),
         contact_email=provenance.get("contact_email", ""),
-        thresholds=_thresholds(data.get("thresholds", {})),
+        thresholds=thresholds_from_table(data.get("thresholds", {})),
     )
 
 
@@ -137,7 +135,7 @@ def site_config_to_toml(site: SiteConfig) -> str:
     """
 
     def entry(key: str, value, comment: str = "") -> str:
-        line = f"{key} = {_toml_value(value)}" if value else f'# {key} = ""'
+        line = f"{key} = {toml_value(value)}" if value else f'# {key} = ""'
         return f"{line:<40} # {comment}" if comment else line
 
     lines = [

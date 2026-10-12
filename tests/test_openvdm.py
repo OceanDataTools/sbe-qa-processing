@@ -17,9 +17,11 @@ from conftest import r2r_fileset
 
 from sbe_qa_processing import openvdm
 from sbe_qa_processing.cli import main
-from sbe_qa_processing.config import R2R_NAMESPACE, Extent, load_config
+from sbe_qa_processing.config import Extent
 from sbe_qa_processing.fileset import load_fileset, md5sum
-from sbe_qa_processing.r2r import checksum_test
+from sbe_qa_processing.integrations.r2r.catalog import R2R_NAMESPACE
+from sbe_qa_processing.integrations.r2r.config import load_cruise_config
+from sbe_qa_processing.integrations.r2r.rules import checksum_test
 
 NS = {"r2r": R2R_NAMESPACE}
 
@@ -467,7 +469,7 @@ def test_config_from_openvdm_reports_gaps(openvdm_api, tmp_path, capsys):
     args = ["config-from-openvdm", "--site-root", site_root, "--site-config", str(site)]
     assert main([*args, "--fileset-id", "169847", "-o", str(configs)]) == 0
 
-    config = load_config(configs / "SP2613.toml")
+    config = load_cruise_config(configs / "SP2613.toml")
     assert (config.cruise_id, config.fileset_id, config.vessel_id) == ("SP2613", "169847", "32QU")
     assert (config.depart_date, config.arrive_date) == (date(2026, 7, 9), date(2026, 7, 10))
     assert config.extent is None
@@ -482,7 +484,7 @@ def test_config_from_openvdm_reports_gaps(openvdm_api, tmp_path, capsys):
     assert main([*args, "-o", str(configs)]) == 1
     assert "use --force" in capsys.readouterr().err
     assert main([*args, "-o", str(configs), "--force"]) == 0
-    assert load_config(configs / "SP2613.toml").fileset_id == ""
+    assert load_cruise_config(configs / "SP2613.toml").fileset_id == ""
 
 
 def test_config_from_openvdm_to_stdout(openvdm_api, api_response, tmp_path, capsys):

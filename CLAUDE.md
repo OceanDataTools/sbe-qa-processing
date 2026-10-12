@@ -18,7 +18,7 @@ The R2R XML is a parity target. `tests/test_r2r_comparison.py` requires its `cer
 
 Use uv. Run from the repo root.
 
-- Install: `uv sync`. Use `uv sync --locked` to check the lock.
+- Install: `uv sync`. Use `uv sync --locked` to check the lock. The OpenVDM hook needs the `openvdm` extra (pyyaml): `uv sync --extra openvdm`. The dev group has pyyaml, so the tests don't.
 - All tests: `uv run pytest`. This takes about 80 s with the R2R filesets present.
 - One test: `uv run pytest tests/test_status.py::test_name`
 - Lint and format: `uv run ruff check .` and `uv run ruff format --check .` (line length 99).
@@ -29,8 +29,8 @@ Use uv. Run from the repo root.
 - Run with R2R's tests and XML: `uv run sbe-qa-processing r2r run configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--force] [--execute-notebook]`
 - Make a cruise TOML from R2R's catalog API: `uv run sbe-qa-processing r2r config-from-catalog CRUISE_ID FILESET_ID [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`. It uses `integrations.r2r.catalog.config_from_r2r_catalog`. The API has no port coordinates, country or state.
 - Make a cruise TOML from an R2R QA XML: `uv run sbe-qa-processing r2r config-from-qa data/<...>/r2r_qa.2.0.xml [-o configs|-] [--force]`
-- Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [--from-r2r CRUISE] [-o configs/site.toml] [--force]`
-- Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL --site-config site.toml [--fileset-id N] [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`.
+- Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [-o configs/site.toml] [--force]`
+- Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL --site-config site.toml [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`.
 
 `data/` (downloaded filesets) and `output/` (generated reports) are gitignored. `configs/` holds the three validation cruises and `site.example.toml`.
 
@@ -60,7 +60,7 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
 4. **`status.py`** decodes the 911plus status bits: pump, bottom contact, bottle confirm, modem.
 5. **`integrity.py`** holds the integrity checks (raw files, checksums, positions, cast times, serial numbers) for any fileset, per cast and summarized for the fileset, as `CheckResult`s. Its per-cast predicates (`cast_position`, `same_serial`, `verify_manifest`, ...) are shared with R2R's `integrations/r2r/rules.py`.
 6. **`science.py`** holds the science checks (`CheckResult` with pass/warn/fail/info/n/a), with limits in `config.Thresholds`. **`loadout.py`** builds the sensor/channel tables. **`bottles.py`** parses `.bl` bottle logs.
-7. **`config.py`** handles the core config TOML: `QAConfig` (every field optional; tables only integrations use are ignored), `Extent` and `Thresholds`. **`openvdm.py`** builds a `CruiseConfig` from OpenVDM's `api/warehouse/getCruiseConfig` (including `cruiseExtent`, from OpenVDM 2.17), OpenVDM 2.17's `vessel` block and an optional site TOML. The vessel block comes from `openvdm.yaml`, or from the cruise's `ovdmConfig.json` when the hook only has `--site-root`. OpenVDM's values win over the site TOML's, field by field. It also handles the hook's skip, chown and pending-checksum logic, and queues the reports for OpenVDM's MD5 summary by running OpenVDM's own `utils/update_md5_summary.py` with OpenVDM's Python (`queue_md5_update`), since this project can't import OpenVDM. `openvdm.resolve` and `cruise_toml` are shared by the hook's snapshot and `config-from-openvdm`, and `HookRun.notes` lists what the config is missing or assumed. **`site_setup.py`** holds `site-config`'s prompts and the `--from-r2r` pre-fill.
+7. **`config.py`** handles the core config TOML: `QAConfig` (every field optional; tables only integrations use are ignored), `Extent` and `Thresholds`.
 8. **Writers:**
    - `pdf_report.py` uses ReportLab and embeds the SVGs as vectors via svglib.
    - `plots.py` has one matplotlib Figure per function, shared by the PDF and the notebook.
@@ -74,7 +74,13 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
    - `certificate.py`: the certificate's PDF pages and notebook cells;
    - `reports.py`: `run_r2r` and `write_r2r_reports`;
    - `download.py`: `r2r fetch-fileset`.
-10. **`cli.py`** provides every command as a subcommand: `run`, `openvdm`, `config-from-openvdm`, `site-config`, `fetch-map-data`, and the `r2r` group (`r2r run`, `r2r config-from-catalog`, `r2r config-from-qa`, `r2r fetch-fileset`). Until issue 21, the `openvdm` hook writes R2R's reports through `integrations/r2r`. Its module docstring states the argument conventions (`-o/--output`, `-o -`, `--force`, integer fileset IDs, uppercase metavars), and `tests/test_cli.py` checks them for every command. The `openvdm` hook's arguments are called from installed `openvdm.yaml` files, so don't rename them. It forces the matplotlib `Agg` backend. In `openvdm` mode, exceptions become a one-line stderr message and exit 1, because OpenVDM displays it.
+10. **`integrations/openvdm/`** is OpenVDM. It writes the core reports only, never R2R's:
+   - `hook.py` builds a core `QAConfig` from OpenVDM's `api/warehouse/getCruiseConfig` (including `cruiseExtent`, from OpenVDM 2.17), OpenVDM 2.17's `vessel` block (name and contact; its R2R IDs are ignored) and an optional site TOML. The vessel block comes from `openvdm.yaml`, or from the cruise's `ovdmConfig.json` when the hook only has `--site-root`. OpenVDM's values win over the site TOML's, field by field. A site TOML's old R2R settings are ignored and listed in `SiteConfig.ignored`;
+   - it also handles the hook's skip, chown and pending-checksum logic, and queues the reports for OpenVDM's MD5 summary by running OpenVDM's own `utils/update_md5_summary.py` with OpenVDM's Python (`queue_md5_update`), since this project can't import OpenVDM;
+   - `resolve` and `cruise_toml` are shared by the hook's snapshot and `config-from-openvdm`, and `HookRun.notes` lists what the config is missing or assumed;
+   - it imports pyyaml only in `load_openvdm_yaml`, so it loads without the extra;
+   - `site_setup.py` holds `site-config`'s prompts.
+11. **`cli.py`** provides every command as a subcommand: `run`, `openvdm`, `config-from-openvdm`, `site-config`, `fetch-map-data`, and the `r2r` group (`r2r run`, `r2r config-from-catalog`, `r2r config-from-qa`, `r2r fetch-fileset`). The hook's `--fileset-id` is accepted and ignored, for installed `openvdm.yaml` files. Its module docstring states the argument conventions (`-o/--output`, `-o -`, `--force`, integer fileset IDs, uppercase metavars), and `tests/test_cli.py` checks them for every command. The `openvdm` hook's arguments are called from installed `openvdm.yaml` files, so don't rename them. It forces the matplotlib `Agg` backend. In `openvdm` mode, exceptions become a one-line stderr message and exit 1, because OpenVDM displays it.
 
 ## Conventions
 

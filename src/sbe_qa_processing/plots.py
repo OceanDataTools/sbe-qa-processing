@@ -1,9 +1,14 @@
 """Figures for the PDF report and the notebook. Each function returns a matplotlib Figure."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+
 import cartopy.crs as ccrs
 import gsw
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import font_manager
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import FixedLocator, MaxNLocator
@@ -15,18 +20,35 @@ from sbe_qa_processing.cast import CastData
 from sbe_qa_processing.config import QAConfig
 from sbe_qa_processing.integrity import cast_position
 from sbe_qa_processing.science import downcast_slice
+from sbe_qa_processing.theme import DEFAULT_THEME, Theme
 
-PRIMARY = "#1f5f8b"
-SECONDARY = "#d1495b"
-PAGE = (8.5, 11)  # US letter, portrait
+FIGURE_WIDTH = 7.5  # [in] US letter less margins; the PDF scales figures to its frame
 TS_MAX_POINTS = 4000
-STATUS_COLORS = {
-    "pass": "#d8f0df",
-    "warn": "#fff1bf",
-    "fail": "#f6d0cc",
-    "info": "#eef2f7",
-    "n/a": "#f2f2f2",
-}
+
+
+def _font_family(path: Path) -> str:
+    """matplotlib's name for a TTF, registering it"""
+    font_manager.fontManager.addfont(str(path))
+    return font_manager.FontProperties(fname=str(path)).get_name()
+
+
+@contextmanager
+def themed(theme: Theme) -> Iterator[None]:
+    """matplotlib settings for the theme's fonts, while a figure is made"""
+    settings = {}
+    if theme.font is not None:
+        settings["font.family"] = _font_family(theme.font)
+        if theme.bold_font is not None:
+            _font_family(theme.bold_font)  # the same family's bold, for bold text
+    if theme.figure_font_scale != 1:
+        settings["font.size"] = plt.rcParams["font.size"] * theme.figure_font_scale
+    with plt.rc_context(settings):
+        yield
+
+
+def _pt(theme: Theme, size: float) -> float:
+    """A figure font size [pt] scaled by the theme"""
+    return size if theme.figure_font_scale == 1 else size * theme.figure_font_scale
 
 
 def _downcast(data: CastData, values: np.ndarray | None) -> np.ndarray | None:
@@ -42,8 +64,14 @@ def _running_median(values: np.ndarray, window: int) -> np.ndarray:
     ]
 
 
-def profiles(data: CastData) -> Figure:
+def profiles(data: CastData, theme: Theme = DEFAULT_THEME) -> Figure:
     """Downcast temperature, salinity and conductivity for both sensors, and their differences"""
+    with themed(theme):
+        return _profiles(data, theme)
+
+
+def _profiles(data: CastData, theme: Theme) -> Figure:
+    colors = theme.colors
     figure, axes = plt.subplots(1, 4, figsize=(7.5, 9.5), sharey=True, layout="constrained")
     pressure = _downcast(data, data.pressure)
     for axis, label, primary, secondary in (
@@ -51,12 +79,14 @@ def profiles(data: CastData) -> Figure:
         (axes[1], "Salinity [PSU]", data.salinity, data.salinity2),
         (axes[2], "Conductivity [S/m]", data.conductivity, data.conductivity2),
     ):
-        axis.plot(_downcast(data, primary), pressure, color=PRIMARY, lw=0.8, label="primary")
+        axis.plot(
+            _downcast(data, primary), pressure, color=colors.primary, lw=0.8, label="primary"
+        )
         if secondary is not None:
             axis.plot(
                 _downcast(data, secondary),
                 pressure,
-                color=SECONDARY,
+                color=colors.secondary,
                 lw=0.8,
                 alpha=0.8,
                 label="secondary",
@@ -65,15 +95,15 @@ def profiles(data: CastData) -> Figure:
         axis.grid(alpha=0.3)
     axes[0].set_ylabel("Pressure [dbar]")
     axes[0].invert_yaxis()
-    axes[0].legend(loc="lower right", fontsize=7)
+    axes[0].legend(loc="lower right", fontsize=_pt(theme, 7))
 
     axis = axes[3]
     if data.has_secondary:
         # Raw 24 Hz differences faintly, with a 2 s running median on top
         window = max(round(2 / data.config.sample_interval), 1)
         for difference, color, label in (
-            (data.temperature - data.temperature2, PRIMARY, "ΔT [°C]"),
-            (data.salinity - data.salinity2, SECONDARY, "ΔS [PSU]"),
+            (data.temperature - data.temperature2, colors.primary, "ΔT [°C]"),
+            (data.salinity - data.salinity2, colors.secondary, "ΔS [PSU]"),
         ):
             down = _downcast(data, difference)
             axis.plot(down, pressure, color=color, lw=0.3, alpha=0.25)
@@ -81,7 +111,7 @@ def profiles(data: CastData) -> Figure:
         axis.axvline(0, color="k", lw=0.5)
         axis.set_xlim(-0.05, 0.05)
         axis.set_xticks([-0.04, 0, 0.04])
-        axis.legend(loc="lower right", fontsize=7)
+        axis.legend(loc="lower right", fontsize=_pt(theme, 7))
     else:
         axis.text(
             0.5,
@@ -94,7 +124,7 @@ def profiles(data: CastData) -> Figure:
         )
     axis.set_xlabel("Primary − secondary")
     axis.grid(alpha=0.3)
-    figure.suptitle(f"{data.name}: downcast profiles", fontsize=11)
+    figure.suptitle(f"{data.name}: downcast profiles", fontsize=_pt(theme, 11))
     return figure
 
 
@@ -104,8 +134,13 @@ def _padded_range(values: np.ndarray, minimum_pad: float) -> tuple[float, float]
     return low - pad, high + pad
 
 
-def ts_diagram(data: CastData) -> Figure:
+def ts_diagram(data: CastData, theme: Theme = DEFAULT_THEME) -> Figure:
     """Conservative temperature vs absolute salinity with σ0 contours (seabirdscientific)"""
+    with themed(theme):
+        return _ts_diagram(data, theme)
+
+
+def _ts_diagram(data: CastData, theme: Theme) -> Figure:
     figure, axis = plt.subplots(figsize=(7.5, 5.5), layout="constrained")
     position = cast_position(data)
     lat, lon = position if position else (0.0, 0.0)
@@ -138,14 +173,14 @@ def ts_diagram(data: CastData) -> Figure:
             colors="0.6",
             linewidths=0.5,
         )
-        axis.clabel(lines, fontsize=6, fmt=lambda level: f"{level:g}")
+        axis.clabel(lines, fontsize=_pt(theme, 6), fmt=lambda level: f"{level:g}")
     else:
         axis.text(
             0.02,
             0.98,
             "density grid too narrow to contour",
             transform=axis.transAxes,
-            fontsize=7,
+            fontsize=_pt(theme, 7),
             color="0.4",
             va="top",
         )
@@ -158,15 +193,21 @@ def ts_diagram(data: CastData) -> Figure:
     figure.colorbar(points, ax=axis, label="Pressure [dbar]")
     axis.set_xlabel("Absolute salinity [g/kg]")
     axis.set_ylabel("Conservative temperature [°C]")
-    axis.set_title(f"{data.name}: TS (σ0 contours)", fontsize=10)
+    axis.set_title(f"{data.name}: TS (σ0 contours)", fontsize=_pt(theme, 10))
     return figure
 
 
-def pressure_series(data: CastData) -> Figure:
+def pressure_series(data: CastData, theme: Theme = DEFAULT_THEME) -> Figure:
     """Pressure over time with pump status and bottle fires"""
+    with themed(theme):
+        return _pressure_series(data, theme)
+
+
+def _pressure_series(data: CastData, theme: Theme) -> Figure:
+    colors = theme.colors
     figure, axis = plt.subplots(figsize=(7.5, 4.3), layout="constrained")
     minutes = data.time / 60
-    axis.plot(minutes, data.pressure, color=PRIMARY, lw=0.8)
+    axis.plot(minutes, data.pressure, color=colors.primary, lw=0.8)
     if data.pump is not None and (~data.pump).any():
         axis.fill_between(
             minutes,
@@ -186,7 +227,7 @@ def pressure_series(data: CastData) -> Figure:
             minutes[fires],
             data.pressure[fires],
             marker=">",
-            color=SECONDARY,
+            color=colors.secondary,
             zorder=3,
             label="bottle fired",
         )
@@ -195,14 +236,11 @@ def pressure_series(data: CastData) -> Figure:
     axis.set_ylabel("Pressure [dbar]")
     axis.grid(alpha=0.3)
     if axis.get_legend_handles_labels()[0]:
-        axis.legend(fontsize=7)
-    axis.set_title(f"{data.name}: pressure", fontsize=10)
+        axis.legend(fontsize=_pt(theme, 7))
+    axis.set_title(f"{data.name}: pressure", fontsize=_pt(theme, 10))
     return figure
 
 
-LAND = "#ece6d6"
-WATER = "#dbe9f4"
-COAST = "#7a7a7a"
 # [degrees] smallest half-width of the map view, so a compact cruise still shows its coastline
 MAP_MIN_HALF_SPAN = 0.15
 
@@ -248,8 +286,11 @@ def _emptiest_corner(points: list[tuple[float, float]], extent) -> str:
     return min(counts, key=counts.get)
 
 
-def _world_inset(figure: Figure, axis, corner: str, latitude: float, longitude: float) -> None:
+def _world_inset(
+    figure: Figure, axis, corner: str, latitude: float, longitude: float, theme: Theme
+) -> None:
     """A small world map marking the cruise, in a corner of the cast map"""
+    colors = theme.colors
     width, height = 0.3, 0.3
     x = 0.02 if "left" in corner else 0.98 - width
     y = 0.02 if "lower" in corner else 0.98 - height
@@ -257,18 +298,18 @@ def _world_inset(figure: Figure, axis, corner: str, latitude: float, longitude: 
         (x, y, width, height), projection=ccrs.Robinson(central_longitude=longitude)
     )
     inset.set_global()
-    inset.set_facecolor(WATER)
+    inset.set_facecolor(colors.water)
     land = maps.world_geometries("physical", "land")
     if land:
         inset.add_geometries(
-            land, ccrs.PlateCarree(), facecolor=LAND, edgecolor=COAST, linewidth=0.2
+            land, ccrs.PlateCarree(), facecolor=colors.land, edgecolor=colors.coast, linewidth=0.2
         )
     inset.plot(
         longitude,
         latitude,
         marker="o",
         markersize=5,
-        color=SECONDARY,
+        color=colors.secondary,
         markeredgecolor="white",
         markeredgewidth=0.6,
         transform=ccrs.PlateCarree(),
@@ -276,10 +317,16 @@ def _world_inset(figure: Figure, axis, corner: str, latitude: float, longitude: 
     inset.spines["geo"].set_edgecolor("0.5")
 
 
-def cast_map(casts: list[CastData], config: QAConfig) -> Figure:
+def cast_map(casts: list[CastData], config: QAConfig, theme: Theme = DEFAULT_THEME) -> Figure:
     """Cast positions over coastlines, against the expected area when the config has one, with
     a world inset showing where the casts were
     """
+    with themed(theme):
+        return _cast_map(casts, config, theme)
+
+
+def _cast_map(casts: list[CastData], config: QAConfig, theme: Theme) -> Figure:
+    colors = theme.colors
     extent = config.extent
     positions = [(c, cast_position(c)) for c in casts]
     positions = [(c, p) for c, p in positions if p is not None]
@@ -303,10 +350,10 @@ def cast_map(casts: list[CastData], config: QAConfig) -> Figure:
     frame = ccrs.PlateCarree(central_longitude=central)
     relative = (view[0] - center_lon, view[1] - center_lon, view[2], view[3])
 
-    figure = plt.figure(figsize=(PAGE[0] - 1, 5.2), layout="constrained")
+    figure = plt.figure(figsize=(FIGURE_WIDTH, 5.2), layout="constrained")
     axis = figure.add_subplot(projection=ccrs.Mercator(central_longitude=central))
     axis.set_extent(relative, crs=frame)
-    axis.set_facecolor(WATER)
+    axis.set_facecolor(colors.water)
     data_crs = ccrs.PlateCarree()
 
     # Natural Earth 10m layers, clipped to a slightly larger window than the view
@@ -314,16 +361,16 @@ def cast_map(casts: list[CastData], config: QAConfig) -> Figure:
     layer = lambda name: maps.clipped_geometries("physical", name, "10m", window, center_lon)
     land = layer("land")
     if land:
-        axis.add_geometries(land, frame, facecolor=LAND, edgecolor="none", zorder=0.5)
+        axis.add_geometries(land, frame, facecolor=colors.land, edgecolor="none", zorder=0.5)
     lakes = layer("lakes")
     if lakes:
         axis.add_geometries(
-            lakes, frame, facecolor=WATER, edgecolor=COAST, linewidth=0.4, zorder=0.6
+            lakes, frame, facecolor=colors.water, edgecolor=colors.coast, linewidth=0.4, zorder=0.6
         )
     coastline = layer("coastline")
     if coastline:
         axis.add_geometries(
-            coastline, frame, facecolor="none", edgecolor=COAST, linewidth=0.5, zorder=0.7
+            coastline, frame, facecolor="none", edgecolor=colors.coast, linewidth=0.5, zorder=0.7
         )
     if land is None:
         axis.text(
@@ -331,7 +378,7 @@ def cast_map(casts: list[CastData], config: QAConfig) -> Figure:
             0.01,
             "coastline data unavailable",
             transform=axis.transAxes,
-            fontsize=6,
+            fontsize=_pt(theme, 6),
             color="0.4",
         )
 
@@ -370,7 +417,7 @@ def cast_map(casts: list[CastData], config: QAConfig) -> Figure:
                 lon,
                 lat,
                 marker="o",
-                color=PRIMARY if inside else SECONDARY,
+                color=colors.primary if inside else colors.secondary,
                 edgecolors="white",
                 linewidths=0.5,
                 transform=data_crs,
@@ -383,7 +430,7 @@ def cast_map(casts: list[CastData], config: QAConfig) -> Figure:
         ticks = MaxNLocator(nbins=6).tick_values(view[0], view[1])
         gridlines.xlocator = FixedLocator([(tick + 180) % 360 - 180 for tick in ticks])
     gridlines.top_labels = gridlines.right_labels = False
-    gridlines.xlabel_style = gridlines.ylabel_style = {"size": 7}
+    gridlines.xlabel_style = gridlines.ylabel_style = {"size": _pt(theme, 7)}
     corner = _emptiest_corner([(lat, unwrap(lon)) for _, (lat, lon) in positions], view)
     legend_corner = {
         "upper right": "lower left",
@@ -392,25 +439,25 @@ def cast_map(casts: list[CastData], config: QAConfig) -> Figure:
         "lower left": "upper right",
     }[corner]
     if axis.get_legend_handles_labels()[0]:
-        axis.legend(fontsize=7, loc=legend_corner)
-    _world_inset(figure, axis, corner, center_lat, central)
+        axis.legend(fontsize=_pt(theme, 7), loc=legend_corner)
+    _world_inset(figure, axis, corner, center_lat, central, theme)
     axis.set_title(
         "Cast positions (hollow squares are deck tests"
         + ("; red is outside the extent)" if extent is not None else ")"),
-        fontsize=10,
+        fontsize=_pt(theme, 10),
     )
-    _label_casts(figure, axis, ordered)
+    _label_casts(figure, axis, ordered, theme)
     return figure
 
 
-def _label_casts(figure: Figure, axis, ordered) -> None:
+def _label_casts(figure: Figure, axis, ordered, theme: Theme) -> None:
     """Labels each cast beside its marker, moving a label down until it doesn't overlap the
     labels already placed. Science casts are labeled first, from north to south
     """
     figure.canvas.draw()  # settle the layout so screen positions are final
     to_screen = ccrs.PlateCarree()._as_mpl_transform(axis)
     points_per_pixel = 72 / figure.dpi
-    font_size, line = 6, 7.5
+    font_size, line = _pt(theme, 6), _pt(theme, 7.5)
     placed: list[tuple[float, float, float, float]] = []  # label boxes in points
     labels = sorted(ordered, key=lambda item: (item[0].cast.is_deck_test, -item[1][0]))
     for data, (lat, lon) in labels:

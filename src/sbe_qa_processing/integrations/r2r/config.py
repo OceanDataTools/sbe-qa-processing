@@ -38,6 +38,7 @@ from sbe_qa_processing.config import (
     thresholds_toml,
     toml_value,
 )
+from sbe_qa_processing.theme import theme_toml
 
 
 @dataclass
@@ -159,4 +160,5 @@ def config_to_toml(config: CruiseConfig) -> str:
             f"{YELLOW_MINIMUM_KEY} = {config.yellow_minimum_percent}"
         ]
     lines += thresholds
+    lines += theme_toml(config.theme)
     return "\n".join(lines) + "\n"

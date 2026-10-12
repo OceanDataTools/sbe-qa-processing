@@ -84,6 +84,33 @@ northernmost = 43.0
 salinity_range = [0.0, 42.0]
 ```
 
+### Themes
+
+The PDF, its figures and the notebook can take a house style: page size and margins, fonts,
+text sizes, colors, a logo and the footer. Pass a theme file with `--theme` (`run`, `r2r run`
+and the `openvdm` hook), or set a `[theme]` table in the config, which applies over the file's
+settings. `configs/theme.example.toml` shows every setting:
+
+```bash
+uv run sbe-qa-processing run path/to/fileset --theme configs/theme.example.toml -o output/MYCASTS
+```
+
+```toml
+[theme]                     # in a config TOML
+page_size = "A4"
+logo = "logo.png"           # relative to the TOML file
+organization = "Example Oceanographic Institution"
+palette = "colorblind"      # Okabe-Ito colors, distinct with common color vision deficiencies
+
+[theme.colors]
+water = "#e6f0f7"
+```
+
+Without a theme, the reports look as they always have. The notebook re-creates the same theme,
+so figures re-run there match the PDF. For the OpenVDM hook, a `[theme]` table can also go in
+the site TOML. Fonts must be TrueType (`.ttf`); with `font_scale` above about 1.05, narrow
+table headers such as "Status" wrap.
+
 Every command is listed by `sbe-qa-processing --help`, and documents its arguments under
 `sbe-qa-processing COMMAND --help`. They share these conventions:
 - `-o/--output` is a directory; only `site-config` writes a single file. Commands that make a

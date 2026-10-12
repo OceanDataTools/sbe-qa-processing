@@ -14,8 +14,8 @@ only R2R's names, aggregation and ratings live here.
 from dataclasses import dataclass, field
 
 from sbe_qa_processing.cast import CastData
-from sbe_qa_processing.config import CruiseConfig
 from sbe_qa_processing.fileset import Fileset
+from sbe_qa_processing.integrations.r2r.config import CruiseConfig
 from sbe_qa_processing.integrity import (
     bottles_fired,
     cast_position,

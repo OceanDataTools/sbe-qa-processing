@@ -6,9 +6,9 @@ import tomllib
 
 import pytest
 
-from sbe_qa_processing import config as config_module
 from sbe_qa_processing.cli import main
 from sbe_qa_processing.config import Extent, Thresholds
+from sbe_qa_processing.integrations.r2r import catalog
 from sbe_qa_processing.openvdm import SiteConfig, load_site_config, site_config_to_toml
 
 # A trimmed record from R2R's api/cruise for RR2605
@@ -36,7 +36,7 @@ def r2r_api(monkeypatch):
         body = {"status": 200, "data": data} if data else {"status": 204, "data": None}
         return io.BytesIO(json.dumps(body).encode())
 
-    monkeypatch.setattr(config_module.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(catalog.urllib.request, "urlopen", urlopen)
     return requested
 
 

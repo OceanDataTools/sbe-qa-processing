@@ -10,7 +10,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import TextIO
 
-from sbe_qa_processing.config import Extent, config_from_r2r_api
+from sbe_qa_processing.config import Extent
+from sbe_qa_processing.integrations.r2r.catalog import config_from_r2r_api
 from sbe_qa_processing.openvdm import SiteConfig
 
 CLEAR = "-"

@@ -7,7 +7,7 @@ import pytest
 from conftest import CONFIGS, r2r_fileset
 
 from sbe_qa_processing.cli import main
-from sbe_qa_processing.config import R2R_NAMESPACE
+from sbe_qa_processing.integrations.r2r.catalog import R2R_NAMESPACE
 
 NS = {"r2r": R2R_NAMESPACE}
 
@@ -22,7 +22,7 @@ def canonical(element) -> str:
 def test_matches_r2r_report(tmp_path, name, cruise):
     fileset = r2r_fileset(name)
     assert (
-        main(["run", str(fileset), "-c", str(CONFIGS / f"{cruise}.toml"), "-o", str(tmp_path)])
+        main(["r2r", "run", str(CONFIGS / f"{cruise}.toml"), str(fileset), "-o", str(tmp_path)])
         == 0
     )
     identifier = name.removesuffix("_ctd")
@@ -52,13 +52,14 @@ def test_matches_r2r_report(tmp_path, name, cruise):
 
 def test_failure_paths_on_bh18_18(tmp_path):
     fileset = r2r_fileset("BH18-18_132368_ctd")
-    from sbe_qa_processing.qa import run_qa
+    from sbe_qa_processing.integrations.r2r.reports import run_r2r
 
-    result = run_qa(fileset, CONFIGS / "BH18-18.toml")
-    tests = {t.name: t for t in result.r2r.tests}
+    run = run_r2r(fileset, CONFIGS / "BH18-18.toml")
+    result = run.result
+    tests = {t.name: t for t in run.r2r.tests}
     assert tests["Presence of All Raw Files"].rating == "R"
     assert tests["Presence of All Raw Files"].failures == ["05252018_ScienceOnDeck"]
-    infos = {i.name: i.value for i in result.r2r.infos}
+    infos = {i.name: i.value for i in run.r2r.infos}
     # An SBE 21 thermosalinograph configuration filed with the 911plus casts
     assert infos["Casts with XMLCON/con file in Bad Format"] == "05082018_DockTest"
     assert all(c.status != "fail" for checks in result.science.values() for c in checks)

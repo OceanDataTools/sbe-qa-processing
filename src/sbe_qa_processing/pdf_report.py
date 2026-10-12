@@ -1,5 +1,5 @@
-"""Writes the PDF QA report: an R2R certificate summary (for a CruiseConfig), a fileset overview,
-then two pages per converted cast.
+"""Writes the PDF QA report: a title block, any pages an integration adds (e.g. R2R's
+certificate), a fileset overview, then two pages per converted cast.
 
 Every plot is first written as an SVG file, and the PDF embeds those same SVGs as vector
 drawings (ReportLab with svglib), so the figures stay sharp at any zoom and the SVGs can be
@@ -33,12 +33,10 @@ from svglib.svglib import svg2rlg
 
 from sbe_qa_processing import plots
 from sbe_qa_processing.bottles import bottle_fires
-from sbe_qa_processing.config import CruiseConfig
 from sbe_qa_processing.loadout import cast_loadout, instrument_settings
 from sbe_qa_processing.qa import QAResult
 from sbe_qa_processing.science import FAIL, PASS, WARN
 
-RATING_NAMES = {"G": "GREEN", "Y": "YELLOW", "R": "RED", "N": "GREY", "X": "BLACK"}
 MARGIN = 0.6 * inch
 FRAME_WIDTH = letter[0] - 2 * MARGIN
 FRAME_HEIGHT = letter[1] - 2 * MARGIN - 12  # the frame's 6 pt top and bottom padding
@@ -125,7 +123,7 @@ def _cell(text, style=CELL) -> Paragraph:
     return Paragraph(str(text).replace("&", "&amp;").replace("<", "&lt;"), style)
 
 
-def _table(header: list[str], rows: list[list], widths: list[float], extra_styles=()) -> Table:
+def table(header: list[str], rows: list[list], widths: list[float], extra_styles=()) -> Table:
     data = [[_cell(h, CELL_BOLD) for h in header]]
     data += [[c if isinstance(c, Flowable) else _cell(c) for c in row] for row in rows]
     table = Table(data, colWidths=[w * FRAME_WIDTH for w in widths], repeatRows=1)
@@ -144,7 +142,7 @@ def _table(header: list[str], rows: list[list], widths: list[float], extra_style
     return table
 
 
-def _tint(hex_color: str, alpha: float = 0.35) -> colors.Color:
+def tint(hex_color: str, alpha: float = 0.35) -> colors.Color:
     color = colors.HexColor(hex_color)
     return colors.Color(
         1 - alpha * (1 - color.red), 1 - alpha * (1 - color.green), 1 - alpha * (1 - color.blue)
@@ -153,13 +151,6 @@ def _tint(hex_color: str, alpha: float = 0.35) -> colors.Color:
 
 def _cruise_facts(config) -> list[str]:
     """Cruise metadata for the report header, leaving out what isn't known"""
-    r2r = isinstance(config, CruiseConfig)
-    vessel = config.vessel_name or (config.vessel_id if r2r else "")
-    ports = (
-        " to ".join(p.name for p in (config.depart_port, config.arrive_port) if p.name)
-        if r2r
-        else ""
-    )
     dates = (
         f"{config.depart_date} to {config.arrive_date}"
         if config.depart_date and config.arrive_date
@@ -167,11 +158,9 @@ def _cruise_facts(config) -> list[str]:
     )
     facts = [
         f"PI {config.cruise_pi}" if config.cruise_pi else "",
-        f"vessel {vessel}" if vessel else "",
+        f"vessel {config.vessel_name}" if config.vessel_name else "",
         dates,
-        ports,
         config.cruise_location,
-        f"R2R fileset {config.fileset_id}" if r2r and config.fileset_id else "",
         f"contact {config.contact_institution}" if config.contact_institution else "",
     ]
     return [fact for fact in facts if fact]
@@ -195,58 +184,13 @@ def _title(result: QAResult) -> list[Flowable]:
     ]
 
 
-def _certificate(result: QAResult) -> list[Flowable]:
-    r2r = result.r2r
-    story = []
-    banner = Table(
-        [[Paragraph(f"R2R rating: {RATING_NAMES[r2r.rating]} ({r2r.rating})", BANNER)]],
-        colWidths=[FRAME_WIDTH],
-    )
-    banner.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(plots.RATING_COLORS[r2r.rating])),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ]
-        )
-    )
-    story += [banner, Spacer(1, 3), Paragraph(r2r.description, SMALL), Spacer(1, 10)]
-
-    rows, styles = [], []
-    for i, test in enumerate(r2r.tests, start=1):
-        rows.append(
-            [
-                test.name,
-                test.rating,
-                "" if test.result is None else f"{test.result:g}%",
-                f"{test.passed}/{test.total}" if test.total else "",
-                ", ".join(test.failures),
-            ]
-        )
-        styles.append(("BACKGROUND", (1, i), (1, i), _tint(plots.RATING_COLORS[test.rating])))
-    story += [
-        Paragraph("Tests", HEADING),
-        _table(
-            ["Test", "Rating", "Result", "Passed", "Failures"],
-            rows,
-            [0.36, 0.08, 0.09, 0.09, 0.38],
-            styles,
-        ),
-        Spacer(1, 12),
-        Paragraph("Infos", HEADING),
-        _table(["Info", "Value"], [[i.name, i.value or "—"] for i in r2r.infos], [0.42, 0.58]),
-    ]
-    return story
-
-
 def _checks_table(checks) -> Table:
     rows = [[c.name, c.status, c.value, c.limit, c.detail] for c in checks]
     styles = [
         ("BACKGROUND", (1, i), (1, i), colors.HexColor(plots.STATUS_COLORS[c.status]))
         for i, c in enumerate(checks, start=1)
     ]
-    return _table(
+    return table(
         ["Check", "Status", "Value", "Limit", "Detail"],
         rows,
         [0.27, 0.08, 0.18, 0.12, 0.35],
@@ -276,7 +220,7 @@ def _overview(result: QAResult, svgs: dict[str, Path]) -> list[Flowable]:
         Paragraph("Fileset overview", HEADING),
         _drawing(svgs["map"], FRAME_WIDTH, max_height=4.6 * inch),
         Spacer(1, 10),
-        _table(
+        table(
             ["Cast", "Scans", "Max P [dbar]", "Dual T/C", "Pass / warn / fail", "Notes"],
             rows,
             [0.22, 0.09, 0.11, 0.08, 0.16, 0.34],
@@ -316,7 +260,7 @@ def _sensors(result: QAResult, data) -> Flowable:
             Paragraph("Sensors", SUBHEADING),
             Paragraph(instrument_settings(data), SMALL),
             Spacer(1, 4),
-            _table(
+            table(
                 ["Channel", "Sensor", "Serial number", "Calibrated", "Age at cast [days]"],
                 rows,
                 [0.24, 0.33, 0.15, 0.14, 0.14],
@@ -358,7 +302,7 @@ def _bottle_table(data) -> Table | None:
         ]
         for fire in fires
     ]
-    return _table(
+    return table(
         ["Bottle", "Fire order", "Time (UTC)", "Pressure, mean [dbar]", "Range [dbar]"],
         rows,
         [0.12, 0.14, 0.3, 0.2, 0.24],
@@ -436,9 +380,16 @@ def _cast(result: QAResult, data, svgs: dict[str, Path]) -> list[Flowable]:
     ]
 
 
-def write_pdf(result: QAResult, path: Path | str, plots_dir: Path | str | None = None) -> Path:
+def write_pdf(
+    result: QAResult,
+    path: Path | str,
+    plots_dir: Path | str | None = None,
+    front: list[Flowable] = (),
+    subject: str = "Integrity and science checks",
+) -> Path:
     """Writes the PDF, and the SVG plots it embeds into `plots_dir` (default:
-    <pdf directory>/<identifier>_plots)
+    <pdf directory>/<identifier>_plots). `front` is pages an integration puts between the title
+    and the fileset overview, e.g. R2R's certificate
     """
     path = Path(path)
     plots_dir = Path(plots_dir) if plots_dir else path.parent / f"{result.config.identifier}_plots"
@@ -462,15 +413,10 @@ def write_pdf(result: QAResult, path: Path | str, plots_dir: Path | str | None =
         topMargin=MARGIN,
         bottomMargin=MARGIN,
         title=title,
-        subject=f"R2R rating {result.r2r.rating}"
-        if result.r2r
-        else "Integrity and science checks",
+        subject=subject,
         creator=f"sbe-qa-processing {result.versions['sbe-qa-processing']}",
     )
-    story = _title(result)
-    if result.r2r is not None:
-        story += _certificate(result) + [PageBreak()]
-    story += _overview(result, svgs)
+    story = _title(result) + list(front) + _overview(result, svgs)
     for data in result.science_casts:
         story += _cast(result, data, svgs)
     document.build(story, onFirstPage=decorate, onLaterPages=decorate)

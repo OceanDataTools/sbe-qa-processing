@@ -4,9 +4,10 @@ import numpy as np
 import pytest
 
 from sbe_qa_processing.cast import CastData
-from sbe_qa_processing.config import CruiseConfig, Extent
+from sbe_qa_processing.config import Extent
 from sbe_qa_processing.fileset import Cast
-from sbe_qa_processing.r2r import (
+from sbe_qa_processing.integrations.r2r.config import CruiseConfig
+from sbe_qa_processing.integrations.r2r.rules import (
     BLACK,
     GREEN,
     GREY,

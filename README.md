@@ -47,8 +47,9 @@ whose release lacks the fixes this tool needs. `uv sync` installs the exact comm
 and takes the branch's latest commit.
 
 The fork is temporary. Once its fixes are released in the official
-[seabirdscientific](https://github.com/Sea-BirdScientific/seabirdscientific), this project will
-depend on that release instead. Until then, the fork's `integration` branch is rebuilt as fixes
+[seabirdscientific](https://github.com/Sea-BirdScientific/seabirdscientific) (two are already
+merged upstream; see [seabirdscientific version](#seabirdscientific-version)), this project
+will depend on that release instead. Until then, the fork's `integration` branch is rebuilt as fixes
 change, so a `pip` install can pick up a different commit from one day to the next.
 
 The maps use [cartopy](https://scitools.org.uk/cartopy/) with Natural Earth 1:10m land, lakes
@@ -305,25 +306,39 @@ cruise.
 ## seabirdscientific version
 
 seabirdscientific comes from the **`integration`** branch of the fork
-`webbpinner/seabirdscientific`: upstream's `v3.0.0` plus every pending fix (including the three
-below). `uv.lock` pins the commit; after the branch changes, update with
-`uv lock --upgrade-package seabirdscientific`. The tool also works on plain upstream `v3.0.0`,
-with the workarounds noted.
+[webbpinner/seabirdscientific](https://github.com/webbpinner/seabirdscientific): upstream's
+`v3.0.0` branch plus the fork's pending changes. `uv.lock` pins the commit (currently
+`1290437`, version `3.0.0a41+fork`); after the branch changes, update with
+`uv lock --upgrade-package seabirdscientific`.
+
+Two of the fixes this tool needs (the status bits and the TS contour grid, below) were merged
+into upstream's `v3.0.0` branch on 2026-10-12 and 13, but no release has them yet: the newest on
+PyPI is the `3.0.0a36` pre-release, and the newest stable release is 2.8.1. The fork still
+carries the `potential_temperature` fix and its build, test and docs changes. Once a release
+has the fixes, this project will depend on it instead of the fork. Until then, the tool also
+works on releases without them, with the workarounds noted.
 
 To develop against a local seabirdscientific checkout instead, install it over the locked one
 with `uv pip install -e path/to/seabirdscientific` and run commands with `uv run --no-sync`
 (a plain `uv run` or `uv sync` puts the locked version back).
 
-- **911plus status bits read in reverse** (fork issue 24, fixed on `integration`). Older
-  seabirdscientific reads the status nibble most significant bit first, so its "pump status" is
-  really the modem bit. `status.py` checks at runtime how the installed version decodes a scan
-  with only the pump bit set, and reads the bits correctly either way. Real data shows the
-  documented order: deck tests 0b0010, casts 0b0011, 0b0111 while bottles fire.
-- **TS contour grid** (fork issue 21, fixed on `integration`). Older versions return a
-  one-column grid for a narrow salinity range (e.g. fresh water), and the TS plot then skips the
-  contours. Either way, the plot zooms to the data and picks contour levels from the density
-  range in view.
-- **`eos80_processing.potential_temperature` ignored in-situ pressure** (fork issue 19, fixed on
+- **911plus status bits read in reverse**
+  ([fork issue 24](https://github.com/webbpinner/seabirdscientific/issues/24); fixed upstream
+  on the `v3.0.0` branch, not yet released). Older seabirdscientific reads the status nibble
+  most significant bit first, so its "pump status" is really the modem bit. `status.py` checks
+  at runtime how the installed version decodes a scan with only the pump bit set, and reads the
+  bits correctly either way. Real data shows the documented order: deck tests 0b0010, casts
+  0b0011, 0b0111 while bottles fire.
+- **TS contour grid**
+  ([fork issue 21](https://github.com/webbpinner/seabirdscientific/issues/21); fixed upstream
+  on the `v3.0.0` branch, not yet released). Older versions stop the grid short of the coldest
+  samples and can return a one-column grid for a narrow salinity range (e.g. fresh water); the
+  TS plot then skips the contours. Upstream's fix also uses a finer temperature step (0.1 °C)
+  and wider salinity padding, so the σ0 contours are smoother than with the earlier fork fix.
+  Either way, the plot zooms to the data and picks contour levels from the density range in
+  view.
+- **`eos80_processing.potential_temperature` ignored in-situ pressure**
+  ([fork issue 19](https://github.com/webbpinner/seabirdscientific/issues/19); fixed on
   `integration`). Not used by this tool.
 - Temperature and conductivity coefficients have no slope/offset in seabirdscientific; the
   `.XMLCON` slope/offset is applied here. Digiquartz pressure slope/offset is applied by

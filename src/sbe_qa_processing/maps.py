@@ -11,10 +11,13 @@ to the map view before plotting; otherwise every SVG would carry entire coastlin
 import logging
 from collections.abc import Iterable
 
+import cartopy
 import cartopy.feature as cfeature
 from shapely.affinity import translate
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
+
+from sbe_qa_processing.network import reaching
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +74,13 @@ def world_geometries(category: str, name: str) -> list[BaseGeometry] | None:
 
 def prefetch() -> list[str]:
     """Downloads every layer the maps use into cartopy's data directory"""
+    downloader = cartopy.config["downloaders"].get(("shapefiles", "natural_earth"))
+    url = getattr(downloader, "url_template", "https://naturalearth.s3.amazonaws.com/")
     fetched = []
     for scale, layers in (("10m", DETAIL_LAYERS), ("110m", WORLD_LAYERS)):
         for category, name in layers:
             # Touching the geometries triggers cartopy's download and caches the shapefile
-            next(iter(_feature(category, name, scale).geometries()), None)
+            with reaching("Natural Earth", url):
+                next(iter(_feature(category, name, scale).geometries()), None)
             fetched.append(f"{scale} {category} {name}")
     return fetched

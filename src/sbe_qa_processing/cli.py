@@ -9,12 +9,16 @@ Conventions shared by every command:
 - The openvdm hook's arguments are called from installed ``openvdm.yaml`` files, so they keep
   their names and behavior.
 - An integration's commands are a group named after it (``r2r ...``).
+- ``-v/--verbose``, before or after the command, logs more: ``-v`` is INFO and ``-vv`` DEBUG
+  (default WARNING). Expected errors (a server that can't be reached, R2R or OpenVDM not having
+  what was asked for, a bad theme) are one line on stderr; ``-vv`` adds their traceback.
 """
 
 import argparse
 import logging
 import sys
 import tomllib
+import traceback
 import warnings
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,10 +26,14 @@ from pathlib import Path
 # Stdlib only: pyyaml (the openvdm extra) is imported when openvdm.yaml is read
 from sbe_qa_processing.integrations.openvdm.hook import DEFAULT_OPENVDM_CONFIG, OpenVDMError
 from sbe_qa_processing.integrations.r2r.catalog import R2RError
+from sbe_qa_processing.network import NetworkError
 from sbe_qa_processing.theme import ThemeError
 
 logger = logging.getLogger(__name__)
 STDOUT = "-"
+# Errors that are a one-line message, not a traceback: the user can act on them
+EXPECTED_ERRORS = (NetworkError, R2RError, OpenVDMError, ThemeError)
+LOG_LEVELS = (logging.WARNING, logging.INFO, logging.DEBUG)  # by the number of -v
 
 
 def _print_summary(lines: list[str], written: list[Path]) -> None:
@@ -282,6 +290,23 @@ def _fetch_map_data(args: argparse.Namespace) -> int:
 
 
 # Arguments -----------------------------------------------------------------------------------
+
+
+def _add_verbose(parser: argparse.ArgumentParser, default=0) -> None:
+    """-v/--verbose on parser and, so it also works after the command, on every subcommand.
+    The subcommands' default is SUPPRESS, so they don't reset a -v given before the command
+    """
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=default,
+        help="log more: -v for INFO, -vv for DEBUG and tracebacks of expected errors",
+    )
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for command in action.choices.values():
+                _add_verbose(command, argparse.SUPPRESS)
 
 
 def _fileset_id(text: str) -> int:
@@ -576,12 +601,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     maps.set_defaults(handler=_fetch_map_data)
+    _add_verbose(parser)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    level = LOG_LEVELS[min(args.verbose, len(LOG_LEVELS) - 1)]
+    if args.verbose:
+        # This package's loggers only: at DEBUG, matplotlib and fontTools would flood the output
+        logging.getLogger("sbe_qa_processing").setLevel(level)
     # Render figures off screen; the notebook uses its own inline backend
     import matplotlib
 
@@ -591,13 +621,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.handler(args)
     except Exception as error:
-        if args.command == "openvdm":  # OpenVDM shows the hook's failure message
-            print(f"sbe-qa-processing: {type(error).__name__}: {error}", file=sys.stderr)
-            return 1
-        if isinstance(error, R2RError | OpenVDMError | ThemeError):  # expected: no traceback
-            print(f"sbe-qa-processing: {error}", file=sys.stderr)
-            return 1
-        raise
+        hook = args.command == "openvdm"  # OpenVDM shows the hook's failure message
+        if not hook and not isinstance(error, EXPECTED_ERRORS):
+            raise
+        if level <= logging.DEBUG:
+            traceback.print_exc()
+        message = f"{type(error).__name__}: {error}" if hook else str(error)
+        print(f"sbe-qa-processing: {message}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

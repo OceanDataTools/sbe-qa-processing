@@ -82,7 +82,8 @@ def test_every_argument_is_documented():
             label = f"{name} {action.dest}"
             assert action.help, label
             assert "--out" not in action.option_strings, label
-            if action.default not in (None, False):
+            # SUPPRESS: -v/--verbose on a subcommand, whose default is the top-level one
+            if action.default not in (None, False, argparse.SUPPRESS):
                 assert "%(default)s" in action.help, label
             if action.nargs != 0:  # takes a value: a descriptive metavar
                 assert action.metavar and action.metavar.isupper(), label

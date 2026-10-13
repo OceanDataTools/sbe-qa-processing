@@ -100,3 +100,18 @@ def test_map_ignores_blank_positions(monkeypatch):
     west, east, south, north = figure.axes[0].get_extent(crs=ccrs.PlateCarree())
     assert -118 < west < east < -116 and 32 < south < north < 33.5
     plt.close(figure)
+
+
+def test_same_named_casts_in_subdirectories(tmp_path):
+    """Issue 44"""
+    from sbe_qa_processing.fileset import load_fileset
+
+    for leg in ("leg1", "leg2"):
+        (tmp_path / leg).mkdir()
+        for suffix in (".hex", ".XMLCON", ".hdr"):
+            (tmp_path / leg / f"CTD001{suffix}").write_text("")
+    (tmp_path / "CTD002.hex").write_text("")
+    names = [c.name for c in load_fileset(tmp_path).casts]
+    assert names == ["CTD002", "leg1/CTD001", "leg2/CTD001"]
+    # The deck test pattern looks at the file name only
+    assert not Cast("tests/CTD001").is_deck_test and Cast("leg1/DeckTest").is_deck_test

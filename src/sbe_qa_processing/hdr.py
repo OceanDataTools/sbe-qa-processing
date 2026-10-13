@@ -5,13 +5,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sbe_qa_processing.readable import Readable, latitude, longitude, timestamp
+
 # e.g. "32 36.25 N" or "117 22.04 W"
 _COORDINATE = re.compile(r"^\s*(\d+)\s+(\d+(?:\.\d+)?)\s*([NSEW])\s*$", re.IGNORECASE)
 _TIME_FORMATS = ("%b %d %Y %H:%M:%S",)
 
 
 @dataclass
-class Header:
+class Header(Readable):
     values: dict[str, str] = field(default_factory=dict)
     lines: list[str] = field(default_factory=list)
 
@@ -50,6 +52,26 @@ class Header:
     @property
     def lat_lon_appended(self) -> bool:
         return "every scan" in (self.get("Store Lat/Lon Data") or "").lower()
+
+    def __str__(self) -> str:
+        source = "NMEA" if self.nmea_time else "system clock"
+        lines = [
+            f"cast time: {timestamp(self.cast_time)}" + (f" ({source})" if self.cast_time else "")
+        ]
+        if self.latitude is not None and self.longitude is not None:
+            lines.append(f"position: {latitude(self.latitude)}, {longitude(self.longitude)}")
+        serials = [
+            f"{which} SN {serial}"
+            for which, serial in (
+                ("temperature", self.temperature_serial),
+                ("conductivity", self.conductivity_serial),
+            )
+            if serial
+        ]
+        if serials:
+            lines.append(", ".join(serials))
+        lines.append(f"{len(self.values)} header values")
+        return "\n".join(lines)
 
 
 def parse_coordinate(text: str | None) -> float | None:

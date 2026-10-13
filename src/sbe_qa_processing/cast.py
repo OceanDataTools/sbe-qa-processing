@@ -10,11 +10,12 @@ from seabirdscientific import instrument_data as idata
 from sbe_qa_processing import status
 from sbe_qa_processing.fileset import Cast
 from sbe_qa_processing.hdr import Header, parse_header
+from sbe_qa_processing.readable import Readable, block
 from sbe_qa_processing.xmlcon import InstrumentConfig, XmlconError, parse_xmlcon
 
 
 @dataclass
-class CastData:
+class CastData(Readable):
     """Converted channels for one cast. Arrays are per scan; absent channels are None."""
 
     cast: Cast
@@ -50,6 +51,36 @@ class CastData:
     @property
     def has_secondary(self) -> bool:
         return self.temperature2 is not None and self.conductivity2 is not None
+
+    def __str__(self) -> str:
+        if self.converted:
+            heading = f"{self.name}: {self.scans} scans"
+            if self.time is not None and len(self.time):
+                heading += f", {self.time[-1] / 60:.1f} min"
+            heading += f", {np.nanmin(self.pressure):.1f} to {np.nanmax(self.pressure):.1f} dbar"
+        else:
+            heading = f"{self.name}: not converted"
+        if self.cast.is_deck_test:
+            heading += " (deck test)"
+        channels = [label for label, values in self._channels() if values is not None]
+        lines = [f"channels: {', '.join(channels)}"] if channels else []
+        lines += [f"{kind} error: {error}" for kind, error in self.errors.items()]
+        return block(heading, lines)
+
+    def _channels(self) -> list[tuple[str, np.ndarray | None]]:
+        return [
+            ("pressure", self.pressure),
+            ("temperature", self.temperature),
+            ("conductivity", self.conductivity),
+            ("salinity", self.salinity),
+            ("secondary temperature", self.temperature2),
+            ("secondary conductivity", self.conductivity2),
+            ("secondary salinity", self.salinity2),
+            ("position", self.latitude),
+            ("pump", self.pump),
+            ("bottle confirm", self.bottle_confirm),
+            ("modulo", self.modulo),
+        ]
 
 
 def _temperature(frequency, config: InstrumentConfig, channel: str) -> np.ndarray:

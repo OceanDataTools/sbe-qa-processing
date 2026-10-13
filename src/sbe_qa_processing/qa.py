@@ -12,11 +12,12 @@ from sbe_qa_processing.cast import CastData, read_cast
 from sbe_qa_processing.config import QAConfig, load_config
 from sbe_qa_processing.fileset import Fileset, load_fileset
 from sbe_qa_processing.integrity import IntegrityResult, run_integrity_checks
+from sbe_qa_processing.readable import Readable, counts, plural, timestamp
 from sbe_qa_processing.science import CheckResult, run_science_checks
 
 
 @dataclass
-class QAResult:
+class QAResult(Readable):
     config: QAConfig
     fileset: Fileset
     casts: list[CastData]
@@ -31,6 +32,26 @@ class QAResult:
     def science_casts(self) -> list[CastData]:
         """Converted casts that aren't deck tests"""
         return [c for c in self.casts if c.converted and not c.cast.is_deck_test]
+
+    def __str__(self) -> str:
+        converted = sum(c.converted for c in self.casts)
+        deck_tests = sum(c.cast.is_deck_test for c in self.casts)
+        seconds = (self.finished - self.started).total_seconds()
+        versions = ", ".join(f"{name} {version}" for name, version in self.versions.items())
+        science = [check.status for checks in self.science.values() for check in checks]
+        lines = [
+            (
+                f"{self.config.identifier}: {plural(len(self.casts), 'cast')} ({converted} "
+                f"converted, {plural(deck_tests, 'deck test')}) in {self.fileset.root}"
+            ),
+            f"  run {timestamp(self.started)}, {seconds:.1f} s"
+            + (f"; {versions}" if versions else ""),
+            f"  integrity checks: {counts([c.status for c in self.integrity.fileset])}",
+            *(f"    {problem}" for problem in _integrity_problems(self)),
+            f"  science checks: {counts(science)}",
+            *(f"    {problem}" for problem in _science_problems(self)),
+        ]
+        return "\n".join(lines)
 
 
 def _versions() -> dict[str, str]:
@@ -82,3 +103,34 @@ def run_qa(fileset: Fileset | Path | str, config: QAConfig | Path | str | None =
         versions=_versions(),
         config_path=config_path,
     )
+
+
+def summary(result: QAResult) -> list[str]:
+    """Indented lines on the integrity and science checks that warned or failed"""
+    integrity, science = _integrity_problems(result), _science_problems(result)
+    return [
+        f"  integrity checks: {len(integrity)} warnings/failures",
+        *(f"    {problem}" for problem in integrity),
+        f"  science checks: {len(science)} warnings/failures",
+        *(f"    {problem}" for problem in science),
+    ]
+
+
+def _integrity_problems(result: QAResult) -> list[str]:
+    """The fileset's integrity checks that warned or failed"""
+    return [
+        f"{check.name} {check.status} ({check.value})"
+        + (f": {check.detail}" if check.detail else "")
+        for check in result.integrity.fileset
+        if check.status in ("warn", "fail")
+    ]
+
+
+def _science_problems(result: QAResult) -> list[str]:
+    """Each cast's science checks that warned or failed"""
+    return [
+        f"{cast}: {check.name} {check.status} ({check.value})"
+        for cast, checks in result.science.items()
+        for check in checks
+        if check.status in ("warn", "fail")
+    ]

@@ -19,6 +19,7 @@ from sbe_qa_processing.bottles import parse_bottle_log
 from sbe_qa_processing.cast import CastData
 from sbe_qa_processing.config import Extent, QAConfig
 from sbe_qa_processing.fileset import Cast, Fileset, md5sum
+from sbe_qa_processing.readable import Readable, block
 from sbe_qa_processing.science import FAIL, INFO, NA, PASS, WARN, CheckResult
 
 # Cast times before this are a reset or unset clock: the SBE 911plus dates from the 1990s
@@ -29,9 +30,16 @@ _FILE_KINDS = {"xmlcon": ".XMLCON/.con", "hex": ".hex/.dat", "conversion": "conv
 
 
 @dataclass
-class IntegrityResult:
+class IntegrityResult(Readable):
     fileset: list[CheckResult]  # fileset checks and per-cast summaries, then infos
     casts: dict[str, list[CheckResult]]  # by cast name, deck tests included
+
+    def __str__(self) -> str:
+        sections = [block("Fileset", [str(check) for check in self.fileset])]
+        sections += [
+            block(name, [str(check) for check in checks]) for name, checks in self.casts.items()
+        ]
+        return "\n".join(sections)
 
 
 # Predicates shared with integrations/r2r/rules.py

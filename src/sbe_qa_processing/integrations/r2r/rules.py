@@ -23,6 +23,7 @@ from sbe_qa_processing.integrity import (
     same_serial,
     verify_manifest,
 )
+from sbe_qa_processing.readable import Readable, block
 
 GREEN, YELLOW, RED, GREY, BLACK = "G", "Y", "R", "N", "X"
 
@@ -41,7 +42,7 @@ class Bound:
 
 
 @dataclass
-class TestResult:
+class TestResult(Readable):
     __test__ = False  # not a pytest test class
 
     name: str
@@ -57,16 +58,28 @@ class TestResult:
     # summary is updated in parallel with post-transfer hooks)
     pending: list[str] = field(default_factory=list)
 
+    def __str__(self) -> str:
+        unit = "%" if self.uom == "Percent" else f" {self.uom}" if self.uom != "Unitless" else ""
+        result = "" if self.result is None else f": {self.result:g}{unit}"
+        counted = f" ({self.passed} of {self.total} passed)" if self.total else ""
+        lines = [f"failed: {', '.join(self.failures)}"] if self.failures else []
+        if self.pending:
+            lines.append(f"not checked yet: {', '.join(self.pending)}")
+        return block(f"{self.rating}  {self.name}{result}{counted}", lines)
+
 
 @dataclass
-class Info:
+class Info(Readable):
     name: str
     uom: str
     value: str
 
+    def __str__(self) -> str:
+        return f"{self.name}: {self.value or 'none'}"
+
 
 @dataclass
-class R2RResult:
+class R2RResult(Readable):
     rating: str
     tests: list[TestResult]
     infos: list[Info]
@@ -75,6 +88,12 @@ class R2RResult:
     @property
     def description(self) -> str:
         return OVERALL_DESCRIPTION
+
+    def __str__(self) -> str:
+        lines = [str(test) for test in self.tests] + [str(info) for info in self.infos]
+        if self.checksum_failures:
+            lines.append(f"checksum failures: {', '.join(self.checksum_failures)}")
+        return block(f"R2R rating {self.rating}", lines)
 
 
 def _percent(passed: int, total: int) -> float:

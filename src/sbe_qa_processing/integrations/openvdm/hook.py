@@ -26,7 +26,7 @@ import subprocess
 import tomllib
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from sbe_qa_processing.config import (
@@ -288,6 +288,11 @@ def openvdm_extent(value) -> Extent | None:
         return None
 
 
+def utc_today() -> date:
+    """Today's UTC date: cast times are UTC, so an open-ended cruise ends on this day"""
+    return datetime.now(UTC).date()
+
+
 def _translate(path: str, cruise_id: str) -> str:
     return path.replace("{cruiseID}", cruise_id)
 
@@ -355,10 +360,10 @@ def resolve(
         notes.append("OpenVDM's cruise has no start date, so the dates check is n/a")
     elif arrive is None:
         # an open-ended cruise is still under way
-        arrive = date.today()  # noqa: DTZ011 - a calendar date
+        arrive = utc_today()
         notes.append(
-            f"OpenVDM's cruise has no end date; arrive_date is today ({arrive}), so casts after "
-            "today fail the dates check"
+            f"OpenVDM's cruise has no end date; arrive_date is today, UTC ({arrive}), so casts "
+            "after today fail the dates check"
         )
     if vessel is None:
         config_filename = warehouse.get("cruiseConfigFn") or "ovdmConfig.json"

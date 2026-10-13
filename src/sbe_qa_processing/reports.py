@@ -4,6 +4,7 @@ summarizes the result for the command line. Integrations add their own pages and
 
 from pathlib import Path
 
+from sbe_qa_processing import qa
 from sbe_qa_processing.notebook import NotebookExtras, write_notebook
 from sbe_qa_processing.pdf_report import FrontPages, write_pdf
 from sbe_qa_processing.qa import QAResult
@@ -50,18 +51,4 @@ def write_reports(
 
 def summary(result: QAResult) -> list[str]:
     """Indented lines on the integrity and science checks that warned or failed"""
-    lines = []
-    integrity = [c for c in result.integrity.fileset if c.status in ("warn", "fail")]
-    lines.append(f"  integrity checks: {len(integrity)} warnings/failures")
-    for check in integrity:
-        detail = f": {check.detail}" if check.detail else ""
-        lines.append(f"    {check.name} {check.status} ({check.value}){detail}")
-    problems = [
-        f"{cast}: {check.name} {check.status} ({check.value})"
-        for cast, checks in result.science.items()
-        for check in checks
-        if check.status in ("warn", "fail")
-    ]
-    lines.append(f"  science checks: {len(problems)} warnings/failures")
-    lines += [f"    {problem}" for problem in problems]
-    return lines
+    return qa.summary(result)

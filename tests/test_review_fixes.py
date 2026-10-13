@@ -115,3 +115,25 @@ def test_same_named_casts_in_subdirectories(tmp_path):
     assert names == ["CTD002", "leg1/CTD001", "leg2/CTD001"]
     # The deck test pattern looks at the file name only
     assert not Cast("tests/CTD001").is_deck_test and Cast("leg1/DeckTest").is_deck_test
+
+
+def test_r2r_xml_without_a_manifest(tmp_path):
+    """Issue 46"""
+
+    from conftest import CONFIGS
+
+    from sbe_qa_processing.integrations.r2r.catalog import R2R_NAMESPACE
+    from sbe_qa_processing.integrations.r2r.reports import run_r2r
+    from sbe_qa_processing.integrations.r2r.xml_report import build_qa_xml
+
+    fileset = tmp_path / "PLAIN"
+    fileset.mkdir()
+    run = run_r2r(fileset, CONFIGS / "SP2613.toml")
+    checksums = {t.name: t for t in run.r2r.tests}["Valid Checksum for All Files in Manifest"]
+    assert (checksums.rating, checksums.failures) == ("X", ["no manifest-md5.txt"])
+    assert run.r2r.checksum_failures == []
+    log = [
+        e.text
+        for e in build_qa_xml(run.result, run.r2r).getroot().iter(f"{{{R2R_NAMESPACE}}}entry")
+    ]
+    assert log == ["no checksum manifest: checksums not verified"]

@@ -165,3 +165,22 @@ def test_fetch_fileset_only_follows_links_under_the_listing(tmp_path, monkeypatc
         "bag/data/CAST1.hex",
     ]
     assert all(url.startswith(base) for url in fetched)
+
+
+def test_header_reading_stops_at_end():
+    """Issue 48: a .hex's data after *END* isn't read"""
+    from sbe_qa_processing.hdr import parse_header, parse_header_lines
+
+    read = []
+
+    def lines():
+        for line in ["* Temperature SN = 4924\n", "*END*\n", "0A1B2C\n", "0A1B2D\n"]:
+            read.append(line)
+            yield line
+
+    header = parse_header_lines(lines())
+    assert header.temperature_serial == "4924" and len(read) == 2
+    # The same header from a real .hex as from reading the whole file, when it's downloaded
+    for path in sorted(Path("data/SP2613_169847_ctd/data").glob("*.hex"))[:1]:
+        whole = parse_header_lines(path.read_text(encoding="latin-1").splitlines(keepends=True))
+        assert parse_header(path) == whole

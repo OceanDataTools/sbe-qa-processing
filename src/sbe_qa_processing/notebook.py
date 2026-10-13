@@ -104,7 +104,10 @@ def build_notebook(
             "    for cast, results in result.integrity.casts.items()\n"
             "    for c in results\n"
             "])\n"
-            'display(integrity.pivot(index="check", columns="cast", values="status")'
+            "if integrity.empty:\n"
+            '    print("no casts")\n'
+            "else:\n"
+            '    display(integrity.pivot(index="check", columns="cast", values="status")'
             '.reindex(integrity["check"].unique()))'
         ),
         new_markdown_cell(
@@ -119,9 +122,12 @@ def build_notebook(
             "    for cast, results in result.science.items()\n"
             "    for c in results\n"
             "])\n"
-            'display(checks.pivot(index="check", columns="cast", values="status")'
+            "if checks.empty:\n"
+            '    print("no science checks: no converted casts that aren\'t deck tests")\n'
+            "else:\n"
+            '    display(checks.pivot(index="check", columns="cast", values="status")'
             '.reindex(checks["check"].unique()))\n'
-            'display(checks[checks["status"].isin(["warn", "fail"])])'
+            '    display(checks[checks["status"].isin(["warn", "fail"])])'
         ),
         new_markdown_cell(
             "## Sensor loadout\n\n"

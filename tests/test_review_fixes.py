@@ -137,3 +137,31 @@ def test_r2r_xml_without_a_manifest(tmp_path):
         for e in build_qa_xml(run.result, run.r2r).getroot().iter(f"{{{R2R_NAMESPACE}}}entry")
     ]
     assert log == ["no checksum manifest: checksums not verified"]
+
+
+def test_fetch_fileset_only_follows_links_under_the_listing(tmp_path, monkeypatch):
+    """Issue 47"""
+    from sbe_qa_processing.integrations.r2r import download
+
+    base = "https://ncei.example/bag/"
+    pages = {
+        base: '<a href="../">Parent</a> <a href="http://elsewhere/x">x</a> '
+        '<a href="a%2F..%2Fb">sneaky</a> <a href="bagit.txt">bagit.txt</a> '
+        '<a href="data/">data/</a> <a href="?C=N;O=D">sort</a>',
+        base + "data/": '<a href="../">Parent</a> <a href="CAST1.hex">CAST1.hex</a>',
+    }
+    fetched = []
+
+    def fetch(opener, url):
+        fetched.append(url)
+        return url, pages.get(url, "contents of " + url).encode()
+
+    monkeypatch.setattr(download, "fetch", fetch)
+    assert download.download_tree(None, base, tmp_path / "bag") == 2
+    assert sorted(
+        p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file()
+    ) == [
+        "bag/bagit.txt",
+        "bag/data/CAST1.hex",
+    ]
+    assert all(url.startswith(base) for url in fetched)

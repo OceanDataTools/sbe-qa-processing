@@ -44,10 +44,21 @@ def fetch(opener, url: str) -> tuple[str, bytes]:
         return response.geturl(), response.read()
 
 
+def _is_child(href: str) -> bool:
+    """Whether a listing's link is a file or subdirectory directly under it: not a parent link
+    (../), another site (http://...) or a name that would escape the destination
+    """
+    if ":" in href:  # a scheme: another site, mailto:, ...
+        return False
+    name = urllib.parse.unquote(href).removesuffix("/")
+    return bool(name) and name not in (".", "..") and not any(c in name for c in "/\\")
+
+
 def list_directory(opener, url: str) -> tuple[list[str], list[str]]:
     """Files and subdirectories of an Apache-style directory index"""
     _, body = fetch(opener, url)
-    names = re.findall(r'href="([^"?/][^"]*)"', body.decode("utf-8", "replace"))
+    links = re.findall(r'href="([^"?/][^"]*)"', body.decode("utf-8", "replace"))
+    names = [link for link in links if _is_child(link)]
     files = [n for n in names if not n.endswith("/")]
     directories = [n for n in names if n.endswith("/")]
     return files, directories

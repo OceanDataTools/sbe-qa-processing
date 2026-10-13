@@ -31,3 +31,22 @@ def test_conductivity_failure_doesnt_stop_the_run(tmp_path, monkeypatch):
     assert not data.converted and result.science == {}
     readable = {c.name: c for c in result.integrity.casts["Station1"]}["Files readable"]
     assert (readable.status, readable.value) == ("fail", "failed: conversion")
+
+
+def test_ts_diagram_without_valid_salinity():
+    """Issue 40"""
+    import matplotlib.pyplot as plt
+
+    from sbe_qa_processing import plots
+
+    n = 200
+    data = CastData(
+        cast=Cast("Station1"),
+        time=np.arange(n) / 24,
+        pressure=np.concatenate([np.linspace(0, 50, n // 2), np.linspace(50, 0, n // 2)]),
+        temperature=np.full(n, 10.0),
+        salinity=np.zeros(n),  # a dead conductivity cell
+    )
+    figure = plots.ts_diagram(data)
+    assert any("no salinity above" in t.get_text() for t in figure.axes[0].texts)
+    plt.close(figure)

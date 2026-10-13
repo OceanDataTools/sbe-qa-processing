@@ -216,8 +216,15 @@ def _drawing(path: Path, width: float, max_height: float | None = None) -> Flowa
     return drawing
 
 
+def escape(text) -> str:
+    """text for a Paragraph, whose mini-markup would otherwise read < > & in cruise names,
+    paths and cast names as tags
+    """
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _cell(text, style: ParagraphStyle) -> Paragraph:
-    return Paragraph(str(text).replace("&", "&amp;").replace("<", "&lt;"), style)
+    return Paragraph(escape(text), style)
 
 
 def table(
@@ -285,8 +292,8 @@ def _title(lay: Layout, result: QAResult) -> list[Flowable]:
     config = result.config
     facts = _cruise_facts(config)
     heading = [
-        Paragraph(f"SBE 9/911plus QA report: {config.cruise_id}", lay.title),
-        Paragraph(config.cruise_name or "", lay.body),
+        Paragraph(f"SBE 9/911plus QA report: {escape(config.cruise_id)}", lay.title),
+        Paragraph(escape(config.cruise_name or ""), lay.body),
     ]
     if lay.theme.logo is not None:
         # The title and name beside the logo, right-aligned
@@ -306,13 +313,13 @@ def _title(lay: Layout, result: QAResult) -> list[Flowable]:
     return [
         *heading,
         Spacer(1, 4),
-        *([Paragraph(" · ".join(facts), lay.small)] if facts else []),
+        *([Paragraph(escape(" · ".join(facts)), lay.small)] if facts else []),
         Paragraph(
             f"Generated {result.finished:%Y-%m-%d %H:%M} UTC by "
             + ", ".join(f"{k} {v}" for k, v in result.versions.items()),
             lay.small,
         ),
-        Paragraph(f"Source: {result.fileset.root}", lay.small),
+        Paragraph(f"Source: {escape(result.fileset.root)}", lay.small),
         Spacer(1, 10),
     ]
 
@@ -394,7 +401,7 @@ def _sensors(lay: Layout, result: QAResult, data) -> Flowable:
     return KeepTogether(
         [
             Paragraph("Sensors", lay.subheading),
-            Paragraph(instrument_settings(data), lay.small),
+            Paragraph(escape(instrument_settings(data)), lay.small),
             Spacer(1, 4),
             table(
                 lay,
@@ -456,7 +463,7 @@ def _bottle_page(lay: Layout, data, svgs: dict[str, Path]) -> list[Flowable]:
     """The bottle fire table with the pressure record below it, sized to the space left. A table
     too long to leave room for a readable plot (very large rosettes) pushes it to the next page
     """
-    name = data.name
+    name = escape(data.name)
     bottles = _bottle_table(lay, data)
     title = Paragraph(f"{name}: bottle fires and pressure record", lay.heading)
     subtitle = Paragraph(f"Bottle fires ({bottles._nrows - 1})", lay.subheading)
@@ -469,7 +476,7 @@ def _bottle_page(lay: Layout, data, svgs: dict[str, Path]) -> list[Flowable]:
         - gap
         - 4
     )
-    pressure = svgs[f"{name}/pressure"]
+    pressure = svgs[f"{data.name}/pressure"]
     chart_height = lay.fit(CHART_HEIGHT)
     if remaining >= MIN_CHART_HEIGHT:
         chart = [
@@ -488,9 +495,10 @@ def _cast(lay: Layout, result: QAResult, data, svgs: dict[str, Path]) -> list[Fl
     share a page
     """
     name = data.name
+    heading = escape(name)
     tables = [
         PageBreak(),
-        Paragraph(name, lay.heading),
+        Paragraph(heading, lay.heading),
         _sensors(lay, result, data),
         Spacer(1, 6),
         KeepTogether(
@@ -510,7 +518,7 @@ def _cast(lay: Layout, result: QAResult, data, svgs: dict[str, Path]) -> list[Fl
     width = lay.frame_width
     profiles = [
         PageBreak(),
-        Paragraph(f"{name}: profiles", lay.heading),
+        Paragraph(f"{heading}: profiles", lay.heading),
         _drawing(svgs[f"{name}/profiles"], width, max_height=lay.fit(PROFILES_HEIGHT * inch)),
     ]
     if bottle_fires(data):
@@ -519,7 +527,7 @@ def _cast(lay: Layout, result: QAResult, data, svgs: dict[str, Path]) -> list[Fl
             PageBreak(),
             *_bottle_page(lay, data, svgs),
             PageBreak(),
-            Paragraph(f"{name}: TS diagram", lay.heading),
+            Paragraph(f"{heading}: TS diagram", lay.heading),
             _drawing(svgs[f"{name}/ts"], width, max_height=lay.fit(TS_HEIGHT * inch)),
             *profiles,
         ]
@@ -529,7 +537,7 @@ def _cast(lay: Layout, result: QAResult, data, svgs: dict[str, Path]) -> list[Fl
     return [
         *tables,
         PageBreak(),
-        Paragraph(f"{name}: pressure record and TS diagram", lay.heading),
+        Paragraph(f"{heading}: pressure record and TS diagram", lay.heading),
         _drawing(
             svgs[f"{name}/pressure"], width, max_height=SHARED_PRESSURE_HEIGHT * inch * shrink
         ),

@@ -1,6 +1,7 @@
 """Parses Seasave .hdr header files (also the header block at the top of a .hex file)."""
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -100,7 +101,8 @@ def parse_time(text: str | None) -> datetime | None:
     return None
 
 
-def parse_header_lines(lines: list[str]) -> Header:
+def parse_header_lines(lines: Iterable[str]) -> Header:
+    """The header in lines, up to *END*; lines after it aren't read"""
     header = Header()
     for line in lines:
         line = line.rstrip("\r\n")
@@ -115,5 +117,8 @@ def parse_header_lines(lines: list[str]) -> Header:
 
 
 def parse_header(path: Path | str) -> Header:
+    """The header of a .hdr, or of a .hex without one: read line by line up to *END*, so a deep
+    cast's data isn't loaded
+    """
     with open(path, encoding="latin-1") as file:
-        return parse_header_lines(file.readlines())
+        return parse_header_lines(file)

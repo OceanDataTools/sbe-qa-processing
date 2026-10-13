@@ -18,7 +18,7 @@ from sbe_qa_processing import maps
 from sbe_qa_processing.bottles import bottle_fires
 from sbe_qa_processing.cast import CastData
 from sbe_qa_processing.config import QAConfig
-from sbe_qa_processing.integrity import cast_position
+from sbe_qa_processing.integrity import cast_position, valid_position
 from sbe_qa_processing.science import downcast_slice
 from sbe_qa_processing.theme import DEFAULT_THEME, Theme
 
@@ -347,8 +347,10 @@ def cast_map(casts: list[CastData], config: QAConfig, theme: Theme = DEFAULT_THE
 def _cast_map(casts: list[CastData], config: QAConfig, theme: Theme) -> Figure:
     colors = theme.colors
     extent = config.extent
+    # Invalid positions (0,0 from a blank NMEA, out of range) would stretch the view; the
+    # integrity check "Cast position" reports them
     positions = [(c, cast_position(c)) for c in casts]
-    positions = [(c, p) for c, p in positions if p is not None]
+    positions = [(c, p) for c, p in positions if p is not None and valid_position(*p)]
     box = (
         []
         if extent is None

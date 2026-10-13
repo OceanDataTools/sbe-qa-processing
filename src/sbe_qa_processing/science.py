@@ -10,17 +10,23 @@ from seabirdscientific import processing
 from sbe_qa_processing.cast import CastData
 from sbe_qa_processing.config import Thresholds
 from sbe_qa_processing.loadout import cast_loadout
+from sbe_qa_processing.readable import Readable, status_line
 
 PASS, WARN, FAIL, INFO, NA = "pass", "warn", "fail", "info", "n/a"
 
 
 @dataclass
-class CheckResult:
+class CheckResult(Readable):
     name: str
     status: str
     value: str
     limit: str = ""
     detail: str = ""
+
+    def __str__(self) -> str:
+        limit = f" (limit {self.limit})" if self.limit else ""
+        detail = f" - {self.detail}" if self.detail else ""
+        return status_line(self.status, f"{self.name}: {self.value}{limit}{detail}")
 
 
 def _grade(value: float, limit: float, warn_factor: float = 2.0) -> str:

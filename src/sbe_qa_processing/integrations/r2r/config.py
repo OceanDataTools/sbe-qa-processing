@@ -82,6 +82,10 @@ class CruiseConfig(QAConfig):
         """<cruise>_<fileset>, or <cruise>_ctd without an R2R fileset ID"""
         return f"{self.cruise_id}_{self.fileset_id or 'ctd'}"
 
+    def __str__(self) -> str:
+        """The cruise TOML, as load_cruise_config reads it"""
+        return config_to_toml(self).rstrip("\n")
+
 
 # What a CruiseConfig needs, from [cruise]
 REQUIRED = ("id", "depart_date", "arrive_date")

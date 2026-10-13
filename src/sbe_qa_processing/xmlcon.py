@@ -9,6 +9,8 @@ from pathlib import Path
 import seabirdscientific.cal_coefficients as cc
 from seabirdscientific.instrument_data import Sensors
 
+from sbe_qa_processing.readable import Readable, block
+
 # SBE 911plus channel layout: 5 frequency channels then 8 voltage channels (4 words of 2)
 FREQUENCY_CHANNELS = ("temperature", "conductivity", "pressure", "temperature2", "conductivity2")
 VOLTAGE_CHANNELS = 8
@@ -19,7 +21,7 @@ class XmlconError(ValueError):
 
 
 @dataclass
-class SensorEntry:
+class SensorEntry(Readable):
     index: int
     kind: str  # element name, e.g. TemperatureSensor, ConductivitySensor, NotInUse
     serial_number: str
@@ -29,6 +31,12 @@ class SensorEntry:
     @property
     def in_use(self) -> bool:
         return self.kind != "NotInUse"
+
+    def __str__(self) -> str:
+        if not self.in_use:
+            return "not in use"
+        calibrated = f", calibrated {self.calibration_date}" if self.calibration_date else ""
+        return f"{self.kind} {self.serial_number or '(no serial number)'}{calibrated}"
 
     def number(self, tag: str, default: float | None = None) -> float:
         text = self.element.findtext(tag)
@@ -40,7 +48,7 @@ class SensorEntry:
 
 
 @dataclass
-class InstrumentConfig:
+class InstrumentConfig(Readable):
     name: str
     frequency_channels_suppressed: int
     voltage_words_suppressed: int
@@ -51,6 +59,37 @@ class InstrumentConfig:
     scan_time_added: bool
     surface_par_added: bool
     sensors: list[SensorEntry]
+
+    @property
+    def summary(self) -> str:
+        """One line on the deck unit settings, e.g. what is appended to each scan"""
+        appended = [
+            label
+            for flag, label in (
+                (self.nmea_position_added, "NMEA position"),
+                (self.nmea_depth_added, "NMEA depth"),
+                (self.nmea_time_added, "NMEA time"),
+                (self.scan_time_added, "scan time"),
+                (self.surface_par_added, "surface PAR"),
+            )
+            if flag
+        ]
+        parts = [
+            self.name,
+            f"{24 / self.scans_to_average:g} Hz",
+            (
+                f"{self.frequency_channels_suppressed} frequency channels and "
+                f"{self.voltage_words_suppressed} voltage words suppressed"
+            ),
+        ]
+        if appended:
+            parts.append("appended: " + ", ".join(appended))
+        return "; ".join(parts)
+
+    def __str__(self) -> str:
+        lines = [f"{channel}: {entry}" for channel, entry in self.frequency_sensors.items()]
+        lines += [f"voltage {i}: {entry}" for i, entry in enumerate(self.voltage_sensors)]
+        return block(self.summary, lines)
 
     @property
     def is_911(self) -> bool:

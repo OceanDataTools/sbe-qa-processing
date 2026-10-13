@@ -27,9 +27,11 @@ from dataclasses import dataclass, field, fields
 from datetime import date, datetime
 from pathlib import Path
 
+from sbe_qa_processing.readable import Readable, latitude, longitude
+
 
 @dataclass
-class Extent:
+class Extent(Readable):
     """Cruise bounding box in decimal degrees (longitude east positive). As in R2R's reports, a
     box across the antimeridian has westernmost > easternmost (e.g. 178 to -178)
     """
@@ -50,9 +52,16 @@ class Extent:
             return longitude >= self.westernmost or longitude <= self.easternmost
         return self.westernmost <= longitude <= self.easternmost
 
+    def __str__(self) -> str:
+        across = " (across the antimeridian)" if self.crosses_antimeridian else ""
+        return (
+            f"{latitude(self.southernmost)} to {latitude(self.northernmost)}, "
+            f"{longitude(self.westernmost)} to {longitude(self.easternmost)}{across}"
+        )
+
 
 @dataclass
-class Thresholds:
+class Thresholds(Readable):
     """Pass limits for the science QA checks. Differences are primary minus secondary sensor,
     evaluated below `dual_sensor_min_pressure` where the water column is usually stable
     """
@@ -75,9 +84,38 @@ class Thresholds:
     # [days] calibrations older than this at the time of the cast are flagged
     max_calibration_age_days: int = 365
 
+    def __str__(self) -> str:
+        defaults = Thresholds()
+        lines = []
+        for f in fields(self):
+            value, default = getattr(self, f.name), getattr(defaults, f.name)
+            unit = f" {THRESHOLD_UNITS[f.name]}" if THRESHOLD_UNITS.get(f.name) else ""
+            changed = "" if value == default else f" (default {_threshold(default)})"
+            lines.append(f"{f.name}: {_threshold(value)}{unit}{changed}")
+        return "\n".join(lines)
+
+
+THRESHOLD_UNITS = {
+    "temperature_difference": "°C",
+    "conductivity_difference": "S/m",
+    "salinity_difference": "PSU",
+    "dual_sensor_min_pressure": "dbar",
+    "temperature_range": "°C",
+    "conductivity_range": "S/m",
+    "salinity_range": "PSU",
+    "pressure_range": "dbar",
+    "max_spike_percent": "%",
+    "max_lost_scan_percent": "%",
+    "max_calibration_age_days": "days",
+}
+
+
+def _threshold(value) -> str:
+    return f"{value[0]:g} to {value[1]:g}" if isinstance(value, tuple) else f"{value:g}"
+
 
 @dataclass(kw_only=True)
-class QAConfig:
+class QAConfig(Readable):
     """What the core QA uses. Every field is optional"""
 
     cruise_id: str = ""  # the reports' title; run_qa defaults it to the fileset directory's name
@@ -103,6 +141,10 @@ class QAConfig:
     def identifier(self) -> str:
         """The reports' file name prefix"""
         return self.cruise_id
+
+    def __str__(self) -> str:
+        """The config as TOML, as load_config reads it"""
+        return config_to_toml(self).rstrip("\n")
 
 
 def as_date(value) -> date:

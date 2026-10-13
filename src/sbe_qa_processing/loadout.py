@@ -96,28 +96,4 @@ def cast_loadout(data: CastData) -> list[SensorRow]:
 
 def instrument_settings(data: CastData) -> str:
     """One line describing the deck unit settings, e.g. what is appended to each scan"""
-    config = data.config
-    if config is None:
-        return ""
-    appended = [
-        label
-        for flag, label in (
-            (config.nmea_position_added, "NMEA position"),
-            (config.nmea_depth_added, "NMEA depth"),
-            (config.nmea_time_added, "NMEA time"),
-            (config.scan_time_added, "scan time"),
-            (config.surface_par_added, "surface PAR"),
-        )
-        if flag
-    ]
-    parts = [
-        config.name,
-        f"{24 / config.scans_to_average:g} Hz",
-        (
-            f"{config.frequency_channels_suppressed} frequency channels and "
-            f"{config.voltage_words_suppressed} voltage words suppressed"
-        ),
-    ]
-    if appended:
-        parts.append("appended: " + ", ".join(appended))
-    return "; ".join(parts)
+    return "" if data.config is None else data.config.summary

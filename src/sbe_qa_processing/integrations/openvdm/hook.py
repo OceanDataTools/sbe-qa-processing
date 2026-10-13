@@ -39,6 +39,7 @@ from sbe_qa_processing.config import (
     thresholds_toml,
     toml_value,
 )
+from sbe_qa_processing.network import reaching
 from sbe_qa_processing.theme import theme_table, theme_toml
 
 logger = logging.getLogger(__name__)
@@ -257,8 +258,9 @@ def cruise_vessel(cruise_dir: Path, config_filename: str) -> OpenVDMVessel:
 def fetch_cruise_config(site_root: str) -> dict:
     """The current cruise's configuration from OpenVDM's API"""
     url = f"{site_root}api/warehouse/getCruiseConfig"
-    with urllib.request.urlopen(url, timeout=API_TIMEOUT) as response:
-        return json.loads(response.read())
+    with reaching("OpenVDM", url), urllib.request.urlopen(url, timeout=API_TIMEOUT) as response:
+        body = response.read()
+    return json.loads(body)
 
 
 def parse_openvdm_date(text: str | None) -> date | None:

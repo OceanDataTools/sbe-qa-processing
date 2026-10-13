@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sbe_qa_processing.integrations.r2r.catalog import R2RError, fetch_r2r_records
+from sbe_qa_processing.network import NetworkError, reaching
 
 R2R = "https://service.rvdata.us"
 DOWNLOAD_TIMEOUT = 120  # [s]
@@ -36,7 +37,10 @@ def build_opener() -> urllib.request.OpenerDirector:
 
 def fetch(opener, url: str) -> tuple[str, bytes]:
     """The final URL after redirects, and the body"""
-    with opener.open(url, timeout=DOWNLOAD_TIMEOUT) as response:
+    with (
+        reaching("R2R's fileset download", url),
+        opener.open(url, timeout=DOWNLOAD_TIMEOUT) as response,
+    ):
         return response.geturl(), response.read()
 
 
@@ -111,6 +115,8 @@ def download_fileset(cruise_id: str, fileset_id: int, destination: Path) -> Down
     for suffix in ("qa.2.0.xml", "qa.xml"):
         try:
             _, qa = fetch(opener, f"{qa_base}{cruise_id}_{fileset_id}_{suffix}")
+        except NetworkError:
+            raise  # not "R2R has no QA report"
         except OSError:
             continue
         # R2R answers missing files with 200 and an "ERROR: ..." body

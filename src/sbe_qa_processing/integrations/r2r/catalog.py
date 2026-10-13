@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sbe_qa_processing.config import Extent, as_date, toml_value
 from sbe_qa_processing.integrations.r2r.config import CruiseConfig, Port
+from sbe_qa_processing.network import reaching
 
 R2R_NAMESPACE = "https://service.rvdata.us/schema/r2r-2.0"
 R2R_API = "https://service.rvdata.us/api"
@@ -23,8 +24,9 @@ def fetch_r2r_records(endpoint: str, cruise_id: str) -> list[dict]:
     answers "not found" with a 204 status in the body and no data
     """
     url = f"{R2R_API}/{endpoint}/?cruise_id={urllib.parse.quote(cruise_id)}"
-    with urllib.request.urlopen(url, timeout=R2R_API_TIMEOUT) as response:
-        return json.loads(response.read()).get("data") or []
+    with reaching("R2R", url), urllib.request.urlopen(url, timeout=R2R_API_TIMEOUT) as response:
+        body = response.read()
+    return json.loads(body).get("data") or []
 
 
 def config_from_r2r_catalog(cruise_id: str, fileset_id: int) -> CruiseConfig:

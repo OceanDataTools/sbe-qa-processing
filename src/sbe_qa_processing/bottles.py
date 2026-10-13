@@ -17,10 +17,11 @@ import numpy as np
 
 from sbe_qa_processing.cast import CastData
 from sbe_qa_processing.hdr import parse_time
+from sbe_qa_processing.readable import Readable, timestamp
 
 
 @dataclass
-class BottleFire:
+class BottleFire(Readable):
     sequence: int
     position: int
     time: datetime | None
@@ -29,6 +30,17 @@ class BottleFire:
     pressure: float | None = None  # [dbar] mean over the fire's scans
     pressure_min: float | None = None
     pressure_max: float | None = None
+
+    def __str__(self) -> str:
+        text = (
+            f"bottle {self.position} (fire {self.sequence}) at {timestamp(self.time)}, "
+            f"scans {self.first_scan}-{self.last_scan}"
+        )
+        if self.pressure is not None:
+            text += f", {self.pressure:.1f} dbar"
+            if self.pressure_min is not None and self.pressure_max is not None:
+                text += f" ({self.pressure_min:.1f} to {self.pressure_max:.1f})"
+        return text
 
 
 def parse_bottle_log(path: Path | str) -> list[BottleFire]:

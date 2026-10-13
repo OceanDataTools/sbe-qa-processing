@@ -13,13 +13,17 @@ from sbe_qa_processing.integrations.r2r.rules import R2RResult, run_r2r_tests
 from sbe_qa_processing.integrations.r2r.xml_report import write_qa_xml
 from sbe_qa_processing.notebook import NotebookExtras
 from sbe_qa_processing.qa import QAResult, run_qa
+from sbe_qa_processing.readable import Readable
 
 
 @dataclass
-class R2RRun:
+class R2RRun(Readable):
     result: QAResult  # its config is the CruiseConfig
     r2r: R2RResult
     config_path: Path | None = None
+
+    def __str__(self) -> str:
+        return "\n".join(summary(self))
 
 
 def run_r2r(fileset: Fileset | Path | str, config: CruiseConfig | Path | str) -> R2RRun:

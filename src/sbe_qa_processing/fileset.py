@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sbe_qa_processing.readable import Readable, block, plural
+
 RAW_DATA_SUFFIXES = (".hex", ".dat")
 CONFIG_SUFFIXES = (".xmlcon", ".con")
 HEADER_SUFFIX = ".hdr"
@@ -17,12 +19,27 @@ DECK_TEST_PATTERN = re.compile(r"deck|dock|test", re.IGNORECASE)
 
 
 @dataclass
-class Cast:
+class Cast(Readable):
     name: str
     raw: Path | None = None
     config: Path | None = None
     header: Path | None = None
     bottles: Path | None = None
+
+    def __str__(self) -> str:
+        files = [path.name for path in (self.raw, self.config, self.header, self.bottles) if path]
+        missing = [
+            kind
+            for kind, path in (
+                ("raw data", self.raw),
+                ("configuration", self.config),
+                ("header", self.header),
+            )
+            if path is None
+        ]
+        notes = [*(["deck test"] if self.is_deck_test else []), *(f"no {m}" for m in missing)]
+        notes_text = f" ({'; '.join(notes)})" if notes else ""
+        return f"{self.name}: {', '.join(files) or 'no files'}{notes_text}"
 
     @property
     def is_deck_test(self) -> bool:
@@ -42,7 +59,7 @@ class ManifestEntry:
 
 
 @dataclass
-class Fileset:
+class Fileset(Readable):
     root: Path
     data_dir: Path
     casts: list[Cast]
@@ -58,6 +75,16 @@ class Fileset:
 
     def relative(self, path: Path) -> str:
         return path.relative_to(self.root).as_posix()
+
+    def __str__(self) -> str:
+        kind = "BagIt bag" if self.is_bag else "Directory"
+        deck_tests = sum(cast.is_deck_test for cast in self.casts)
+        parts = [plural(len(self.casts), "cast")]
+        if deck_tests:
+            parts.append(plural(deck_tests, "deck test"))
+        if self.manifest:
+            parts.append(f"manifest of {len(self.manifest)} files")
+        return block(f"{kind} {self.root}: {', '.join(parts)}", [str(c) for c in self.casts])
 
 
 def md5sum(path: Path) -> str:

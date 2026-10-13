@@ -315,5 +315,6 @@ def run_r2r_tests(fileset: Fileset, casts: list[CastData], config: CruiseConfig)
         rating=overall_rating(tests),
         tests=tests,
         infos=infos,
-        checksum_failures=tests[1].failures,
+        # Files only: without a manifest, the test's failure is the missing manifest itself
+        checksum_failures=tests[1].failures if fileset.manifest else [],
     )

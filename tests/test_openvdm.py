@@ -7,7 +7,7 @@ import subprocess
 import sys
 import threading
 import tomllib
-from datetime import date
+from datetime import UTC, date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -488,7 +488,7 @@ def test_config_from_openvdm_to_stdout(openvdm_api, api_response, tmp_path, caps
     assert main(["config-from-openvdm", "--site-root", site_root, "-o", "-"]) == 0
     captured = capsys.readouterr()
     data = tomllib.loads(captured.out)
-    assert data["cruise"]["arrive_date"] == date.today()  # noqa: DTZ011 - a calendar date
+    assert data["cruise"]["arrive_date"] == datetime.now(UTC).date()
     assert data["cruise"]["extent"]["westernmost"] == -117.3773
     assert "depart_port" not in data["cruise"]
     assert "cruise extent from openvdm" in captured.err
@@ -555,3 +555,14 @@ def test_resolve_passes_the_site_theme_to_the_snapshot(tmp_path):
     snapshot = tmp_path / "snapshot.toml"
     snapshot.write_text(openvdm.cruise_toml(run, "http://openvdm/"))
     assert load_config(snapshot).theme == {"page_size": "A4"}
+
+
+def test_open_ended_cruise_ends_today_in_utc(tmp_path, monkeypatch):
+    """Issue 45: cast times are UTC, so today is the UTC date, not the local one"""
+    assert openvdm.utc_today() == datetime.now(UTC).date()
+    # e.g. 02:00 UTC on the 14th is still the 13th at UTC-8
+    monkeypatch.setattr(openvdm, "utc_today", lambda: date(2026, 10, 14))
+    response = cruise_config(tmp_path) | {"cruiseEndDate": ""}
+    run = openvdm.resolve(response, openvdm.SiteConfig(), "CTD")
+    assert run.config.arrive_date == date(2026, 10, 14)
+    assert "arrive_date is today, UTC (2026-10-14)" in " ".join(run.notes)

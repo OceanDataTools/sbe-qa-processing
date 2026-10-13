@@ -119,6 +119,8 @@ def build_qa_xml(result: QAResult, r2r: R2RResult) -> ET.ElementTree:
     _sub(root, "filesetinfo_supplements")
     _sub(root, "references")
     log = _sub(root, "log")
+    if not result.fileset.manifest:
+        _sub(log, "entry", "no checksum manifest: checksums not verified")
     for name in r2r.checksum_failures:
         _sub(log, "entry", f"checksum mismatch or missing file: {name}")
     for cast in result.casts:

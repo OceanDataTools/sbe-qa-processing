@@ -4,6 +4,7 @@ or a plain directory of Seasave output.
 
 import hashlib
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -43,7 +44,8 @@ class Cast(Readable):
 
     @property
     def is_deck_test(self) -> bool:
-        return bool(DECK_TEST_PATTERN.search(self.name))
+        # The file name only: a cast named leg1/CTD001 in a "tests" directory isn't a deck test
+        return bool(DECK_TEST_PATTERN.search(self.name.rsplit("/", 1)[-1]))
 
     @property
     def has_all_raw_files(self) -> bool:
@@ -167,6 +169,13 @@ def load_fileset(path: Path | str, manifest_path: Path | str | None = None) -> F
         if attribute == "raw":
             cast.name = file.stem  # prefer the raw file's spelling of the name
         setattr(cast, attribute, file)
+    # Casts in different directories can share a file name; every result is keyed by name, so
+    # those are named by their path in the data directory instead (e.g. leg1/CTD001)
+    stems = Counter(cast.name.lower() for cast in casts.values())
+    for cast in casts.values():
+        if stems[cast.name.lower()] > 1:
+            file = cast.raw or cast.config or cast.header or cast.bottles
+            cast.name = file.relative_to(data_dir).with_suffix("").as_posix()
 
     manifest, manifest_mtime = [], None
     if is_bag:

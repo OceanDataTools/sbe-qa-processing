@@ -18,12 +18,13 @@ from sbe_qa_processing import maps
 from sbe_qa_processing.bottles import bottle_fires
 from sbe_qa_processing.cast import CastData
 from sbe_qa_processing.config import QAConfig
-from sbe_qa_processing.integrity import cast_position
+from sbe_qa_processing.integrity import cast_position, valid_position
 from sbe_qa_processing.science import downcast_slice
 from sbe_qa_processing.theme import DEFAULT_THEME, Theme
 
 FIGURE_WIDTH = 7.5  # [in] US letter less margins; the PDF scales figures to its frame
 TS_MAX_POINTS = 4000
+TS_MIN_SALINITY = 0.01  # [PSU] samples at or below this are left out of the TS diagram
 
 
 def _font_family(path: Path) -> str:
@@ -145,11 +146,29 @@ def _ts_diagram(data: CastData, theme: Theme) -> Figure:
     position = cast_position(data)
     lat, lon = position if position else (0.0, 0.0)
     down = downcast_slice(data)
+    salinity = data.salinity[down]
+    if not np.any(np.isfinite(salinity) & (salinity > TS_MIN_SALINITY)):
+        # e.g. a dead conductivity cell; seabirdscientific's contour grid can't be built from
+        # no samples, and the salinity range check already fails the cast
+        axis.text(
+            0.5,
+            0.5,
+            f"no salinity above {TS_MIN_SALINITY} PSU for a TS diagram",
+            ha="center",
+            va="center",
+            transform=axis.transAxes,
+            fontsize=_pt(theme, 9),
+            color="0.4",
+        )
+        axis.set_xlabel("Absolute salinity [g/kg]")
+        axis.set_ylabel("Conservative temperature [°C]")
+        axis.set_title(f"{data.name}: TS (σ0 contours)", fontsize=_pt(theme, 10))
+        return figure
     contour = contour_from_t_s_p(
         data.temperature[down],
-        data.salinity[down],
+        salinity,
         data.pressure[down],
-        min_salinity=0.01,
+        min_salinity=TS_MIN_SALINITY,
         lat=lat,
         lon=lon,
     )
@@ -328,8 +347,10 @@ def cast_map(casts: list[CastData], config: QAConfig, theme: Theme = DEFAULT_THE
 def _cast_map(casts: list[CastData], config: QAConfig, theme: Theme) -> Figure:
     colors = theme.colors
     extent = config.extent
+    # Invalid positions (0,0 from a blank NMEA, out of range) would stretch the view; the
+    # integrity check "Cast position" reports them
     positions = [(c, cast_position(c)) for c in casts]
-    positions = [(c, p) for c, p in positions if p is not None]
+    positions = [(c, p) for c, p in positions if p is not None and valid_position(*p)]
     box = (
         []
         if extent is None

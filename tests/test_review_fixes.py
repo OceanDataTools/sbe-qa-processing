@@ -78,3 +78,25 @@ def test_notebook_runs_without_casts(tmp_path):
     path = write_notebook(result, tmp_path / "EMPTY_qa.ipynb", tmp_path, execute=True)
     text = path.read_text()
     assert "no casts" in text and "no science checks" in text
+
+
+def test_map_ignores_blank_positions(monkeypatch):
+    """Issue 43"""
+    import cartopy.crs as ccrs
+    import matplotlib.pyplot as plt
+
+    from sbe_qa_processing import maps, plots
+    from sbe_qa_processing.config import QAConfig
+    from sbe_qa_processing.hdr import Header
+
+    monkeypatch.setattr(maps, "_feature", lambda *a: (_ for _ in ()).throw(OSError("offline")))
+
+    def at(name, latitude, longitude):
+        values = {"nmea latitude": latitude, "nmea longitude": longitude}
+        return CastData(cast=Cast(name), header=Header(values=values))
+
+    casts = [at("Station1", "32 36.25 N", "117 22.04 W"), at("Blank", "00 00.00 N", "000 00.00 E")]
+    figure = plots.cast_map(casts, QAConfig())
+    west, east, south, north = figure.axes[0].get_extent(crs=ccrs.PlateCarree())
+    assert -118 < west < east < -116 and 32 < south < north < 33.5
+    plt.close(figure)

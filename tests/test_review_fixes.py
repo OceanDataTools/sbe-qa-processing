@@ -63,3 +63,18 @@ def test_markup_characters_in_report_text(tmp_path):
     result = qa.run_qa(fileset, config)
     pdf = write_pdf(result, tmp_path / "report.pdf")
     assert pdf.stat().st_size > 0
+
+
+def test_notebook_runs_without_casts(tmp_path):
+    """Issue 42: the generated notebook executes for a fileset with no casts"""
+    import pytest
+
+    pytest.importorskip("nbclient")
+    from sbe_qa_processing.notebook import write_notebook
+
+    fileset = tmp_path / "EMPTY"
+    fileset.mkdir()
+    result = qa.run_qa(fileset)
+    path = write_notebook(result, tmp_path / "EMPTY_qa.ipynb", tmp_path, execute=True)
+    text = path.read_text()
+    assert "no casts" in text and "no science checks" in text

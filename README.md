@@ -14,7 +14,7 @@ small config, and it checks the files and the data and writes:
 |---|---|
 | `<TITLE>_qa_report.pdf` | A cast map with coastlines and a world inset; the fileset's integrity checks; and per cast: profiles, dual-sensor differences, TS diagram, pressure record, integrity and science checks and sensor loadout |
 | `<TITLE>_plots/*.svg` | Every report figure as SVG: the cast map, and each cast's profiles, TS diagram and pressure record. The PDF embeds these same SVGs as vector graphics |
-| `<TITLE>_qa.ipynb` | A notebook that re-runs the whole assessment step by step, to inspect or change it |
+| `<TITLE>_qa.ipynb` | A notebook that re-runs the whole assessment step by step, to inspect or change it (see [Opening the notebook](#opening-the-notebook)) |
 
 `<TITLE>` is the config's cruise ID, or the fileset directory's name without one.
 
@@ -325,6 +325,42 @@ Without a theme, the reports look as they always have. The notebook re-creates t
 so figures re-run there match the PDF. For the OpenVDM hook, a `[theme]` table can also go in
 the site TOML. Fonts must be TrueType (`.ttf`); with `font_scale` above about 1.05, narrow
 table headers such as "Status" wrap.
+
+### Opening the notebook
+
+The notebook imports this package and seabirdscientific, so it has to run on the project's
+Python (`.venv`), not on the Python of whichever Jupyter opens it. A Jupyter installed with
+Homebrew, Anaconda or pip starts its own Python by default. That Python doesn't have this
+project's packages, so the first cell fails with
+`ModuleNotFoundError: No module named 'matplotlib'` (or `'sbe_qa_processing'`). There are two
+ways to fix this.
+
+**Run JupyterLab from the project.** Nothing to set up, and nothing is added to `.venv` or
+`uv.lock`:
+
+```bash
+uv run --with jupyterlab jupyter lab output/MYCASTS/MYCASTS_qa.ipynb
+```
+
+**Or use the Jupyter you already have.** Register the project's Python as a kernel, once per
+checkout:
+
+```bash
+uv run python -m ipykernel install --user --name sbe-qa-processing --display-name "Python (sbe-qa-processing)"
+```
+
+Then, in each notebook, choose **Kernel → Change Kernel… → Python (sbe-qa-processing)**. The
+generated notebooks ask for the default `python3` kernel, so do this for each new one. Some
+notes on this way:
+- It needs `ipykernel` from the dev group, so it doesn't work after `uv sync --no-dev`.
+- The kernel runs `.venv` at the path where you registered it. If you move the checkout or
+  delete `.venv`, register it again.
+- `jupyter kernelspec list` shows the registered kernels, and
+  `jupyter kernelspec uninstall sbe-qa-processing` removes this one.
+
+The notebook's paths to the fileset, the config, the theme and the output directory are
+absolute, so it doesn't matter where Jupyter starts. `--execute-notebook` runs the notebook
+with the project's Python and needs neither setup.
 
 ## What it checks
 

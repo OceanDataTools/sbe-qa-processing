@@ -46,7 +46,13 @@ class CastData(Readable):
 
     @property
     def converted(self) -> bool:
-        return self.pressure is not None and self.temperature is not None
+        """Every channel the science checks and plots need is set. A conductivity failure after
+        pressure and temperature converted leaves the cast unconverted, with the error recorded
+        """
+        return all(
+            values is not None
+            for values in (self.pressure, self.temperature, self.conductivity, self.salinity)
+        )
 
     @property
     def has_secondary(self) -> bool:

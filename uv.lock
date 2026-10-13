@@ -2377,7 +2377,7 @@ wheels = [
 [[package]]
 name = "seabirdscientific"
 version = "3.0.0a41+fork"
-source = { git = "https://github.com/webbpinner/seabirdscientific?rev=integration#1290437d92185e3c0935409e65c348ec84ee9904" }
+source = { git = "https://github.com/webbpinner/seabirdscientific?rev=integration#89e10456159129152f28f6afa335a8b3c27ed4b1" }
 dependencies = [
     { name = "gsw" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },

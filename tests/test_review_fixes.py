@@ -50,3 +50,16 @@ def test_ts_diagram_without_valid_salinity():
     figure = plots.ts_diagram(data)
     assert any("no salinity above" in t.get_text() for t in figure.axes[0].texts)
     plt.close(figure)
+
+
+def test_markup_characters_in_report_text(tmp_path):
+    """Issue 41"""
+    from sbe_qa_processing.config import QAConfig
+    from sbe_qa_processing.pdf_report import write_pdf
+
+    fileset = tmp_path / "A<B & C>"
+    fileset.mkdir()
+    config = QAConfig(cruise_id="T<S", cruise_name="R/V <Atlantis> & friends", cruise_pi="A<B")
+    result = qa.run_qa(fileset, config)
+    pdf = write_pdf(result, tmp_path / "report.pdf")
+    assert pdf.stat().st_size > 0

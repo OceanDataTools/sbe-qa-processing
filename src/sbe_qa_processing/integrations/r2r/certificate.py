@@ -6,7 +6,7 @@ from reportlab.platypus import Flowable, PageBreak, Paragraph, Spacer, Table, Ta
 
 from sbe_qa_processing.integrations.r2r.config import CruiseConfig
 from sbe_qa_processing.integrations.r2r.rules import R2RResult
-from sbe_qa_processing.pdf_report import FrontPages, Layout, table, tint
+from sbe_qa_processing.pdf_report import FrontPages, Layout, escape, table, tint
 from sbe_qa_processing.qa import QAResult
 
 RATING_NAMES = {"G": "GREEN", "Y": "YELLOW", "R": "RED", "N": "GREY", "X": "BLACK"}
@@ -28,7 +28,8 @@ def certificate(result: QAResult, r2r: R2RResult) -> FrontPages:
 
     def pages(lay: Layout) -> list[Flowable]:
         rating_colors = lay.colors.rating
-        story = [Paragraph(" · ".join(r2r_facts(result.config)), lay.small), Spacer(1, 6)]
+        facts = escape(" · ".join(r2r_facts(result.config)))
+        story = [Paragraph(facts, lay.small), Spacer(1, 6)]
         banner = Table(
             [[Paragraph(f"R2R rating: {RATING_NAMES[r2r.rating]} ({r2r.rating})", lay.banner)]],
             colWidths=[lay.frame_width],

@@ -65,25 +65,129 @@ uv run sbe-qa-processing run path/to/fileset -c my_config.toml -o output/MYCASTS
 ```
 
 Without `-c`, the reports are titled after the fileset directory, and the integrity checks
-that need an expected area or dates are n/a. A config sets those and the thresholds; every
-field is optional (see `src/sbe_qa_processing/config.py`):
+that need an expected area or dates are n/a. A [config TOML](#config-toml) sets those, the
+thresholds and the report's details; every field is optional.
+
+### Command line
+
+`sbe-qa-processing --help` lists the commands, and `sbe-qa-processing COMMAND --help` (or
+`sbe-qa-processing r2r COMMAND --help`) documents each one. The core commands are `run` and
+`fetch-map-data`; the [R2R commands](#r2r-commands) are a group under `r2r`, and the
+[OpenVDM commands](#openvdm-commands) are `openvdm`, `config-from-openvdm` and `site-config`.
+
+Every command follows these conventions:
+- `-o/--output` is a directory; only `site-config` writes a single file. Commands that make a
+  cruise TOML write `<OUTPUT_DIR>/<CRUISE_ID>.toml` (default `configs/`), or to stdout with
+  `-o -`.
+- Existing outputs, reports included, aren't overwritten without `--force`. The exception is
+  the `openvdm` hook, which replaces its reports after each transfer.
+- A command exits 0 on success and 1 when it refuses (e.g. existing outputs) or fails with an
+  expected error (a bad theme, R2R or OpenVDM not having what was asked for), with a one-line
+  message on stderr.
+
+#### `run`
+
+```text
+sbe-qa-processing run [-c CONFIG_TOML] [-o OUTPUT_DIR] [--force] [--execute-notebook]
+                      [--theme THEME_TOML] FILESET_DIR
+```
+
+Assesses a fileset with the integrity and science checks, and writes the PDF, the SVG plots and
+the notebook.
+
+| Argument | Default | Description |
+|---|---|---|
+| `FILESET_DIR` | required | A directory of casts, searched recursively, or a BagIt bag (a directory with `bagit.txt`, `manifest-md5.txt` and the casts under `data/`). A cast's `.hex`/`.dat`, `.XMLCON`/`.con`, `.hdr` and `.bl` files are matched by name, ignoring case. Casts whose names contain `deck`, `dock` or `test` are deck tests |
+| `-c`, `--config CONFIG_TOML` | none | A [config TOML](#config-toml). Without one, the reports are titled after `FILESET_DIR` |
+| `-o`, `--output OUTPUT_DIR` | `output` | Directory for the reports, created if needed |
+| `--force` | off | Replace existing reports; without it, `run` stops if any of them exists |
+| `--execute-notebook` | off | Run the notebook (needs `nbclient` and `ipykernel`, in the dev group) and save it with its outputs |
+| `--theme THEME_TOML` | none | A [theme](#themes) file; the config's `[theme]` applies on top |
+
+It writes `<TITLE>_qa_report.pdf`, `<TITLE>_plots/*.svg` and `<TITLE>_qa.ipynb` into
+`OUTPUT_DIR`, where `<TITLE>` is the config's `[cruise] id`, or the fileset directory's name.
+It prints a summary: the number of casts, then each integrity check and science check that warned
+or failed.
+
+#### `fetch-map-data`
+
+```text
+sbe-qa-processing fetch-map-data
+```
+
+Downloads the Natural Earth layers the cast map uses (1:10m land, lakes and coastlines, and the
+1:110m world for the inset, about 27 MB) into cartopy's data directory, so the maps have
+coastlines offline, e.g. at sea. It takes no arguments.
+
+### Config TOML
+
+A config TOML describes the cruise for the reports, sets the expected area and dates for the
+integrity checks, and tunes the science checks. Every table and key is optional; leave out
+what you don't know. A complete example:
 
 ```toml
 [cruise]
-id = "LAKE1"        # the reports' title
-name = "..."
-depart_date = 2026-07-09   # expected dates
+id = "LAKE1"                          # the reports' title and file name prefix
+name = "Lake Michigan spring survey"  # under the title
+pi = "A. Scientist"                   # report header details, shown when given
+location = "Southern Lake Michigan"
+vessel_name = "Blue Heron"
+depart_date = 2026-07-09              # expected cast dates: TOML dates, not strings
 arrive_date = 2026-07-10
 
-[cruise.extent]     # expected area
+[cruise.extent]                       # expected cast area [decimal degrees, east and north positive]
 westernmost = -88.0
 easternmost = -87.0
 southernmost = 42.0
 northernmost = 43.0
 
-[thresholds]        # e.g. fresh water
-salinity_range = [0.0, 42.0]
+[fileset]
+manifest = "MD5_Summary.txt"          # checksums for a plain directory; relative to this file
+
+[provenance]                          # the report contact, in the header
+contact_institution = "Large Lakes Observatory"
+contact_email = "ship-tech@example.org"
+
+[thresholds]                          # science check limits; defaults below
+salinity_range = [0.0, 2.0]           # fresh water
+conductivity_range = [0.0, 0.2]
+
+[theme]                               # the reports' look; see Themes
+page_size = "A4"
 ```
+
+| Table | Key | Used for |
+|---|---|---|
+| `[cruise]` | `id` | The reports' title and file names. Default: the fileset directory's name |
+| | `name`, `pi`, `location`, `vessel_name` | The report header, when given |
+| | `depart_date`, `arrive_date` | "Cast time inside the expected dates" (needs both; n/a without them) |
+| `[cruise.extent]` | `westernmost`, `easternmost`, `southernmost`, `northernmost` | "Position inside the expected area" (n/a without it) and the box on the cast map. All four are needed. A box across the antimeridian has `westernmost` > `easternmost`, e.g. 178 to -178 |
+| `[fileset]` | `manifest` | A checksum file for a plain directory: `<md5> <path>` lines with paths relative to the manifest's directory, as in OpenVDM's MD5 summary. Lines without a real hash are skipped, and files changed after the manifest was written count as pending. A BagIt bag uses its own `manifest-md5.txt` instead |
+| `[provenance]` | `contact_institution`, `contact_email` | The report header |
+| `[thresholds]` | see below | The science checks |
+| `[theme]` | see [Themes](#themes) | The PDF, figures and notebook |
+
+`[thresholds]`, with their defaults. Ranges are `[low, high]` arrays.
+
+| Key | Default | Check |
+|---|---|---|
+| `temperature_difference` | `0.01` [°C] | Dual temperature difference: median of \|primary − secondary\| below `dual_sensor_min_pressure`. Warns up to twice the limit, then fails |
+| `conductivity_difference` | `0.001` [S/m] | Dual conductivity difference, as above |
+| `salinity_difference` | `0.01` [PSU] | Dual salinity difference, as above |
+| `dual_sensor_min_pressure` | `20.0` [dbar] | Depth below which the dual-sensor differences are taken, leaving out the surface layer |
+| `temperature_range` | `[-2.5, 40.0]` [°C] | Plausible range: passes with no scans outside, warns under 1% outside, else fails |
+| `conductivity_range` | `[0.0, 7.0]` [S/m] | Plausible range, pumped scans only |
+| `salinity_range` | `[2.0, 42.0]` [PSU] | Plausible range, pumped scans only; lower it for fresh water |
+| `pressure_range` | `[-5.0, 11000.0]` [dbar] | Plausible range |
+| `max_spike_percent` | `0.5` [%] | Share of scans Wild Edit flags (2 and 20 standard deviations, 100-scan blocks). Warns up to twice the limit |
+| `max_lost_scan_percent` | `0.1` [%] | Share of scans missing from the modulo counter. Warns up to ten times the limit |
+| `max_calibration_age_days` | `365` [days] | Sensors calibrated longer ago than this at the time of the cast warn |
+
+Parsing rules:
+- An unknown key in `[thresholds]` or `[theme]` is an error, so a typo doesn't go unnoticed.
+- Other tables and keys are ignored, so an [R2R cruise TOML](#r2r-cruise-toml) or an OpenVDM
+  snapshot works as a config too.
+- Relative paths (`[fileset] manifest`, theme fonts and logo) are relative to the TOML file.
 
 ### Themes
 
@@ -111,14 +215,6 @@ Without a theme, the reports look as they always have. The notebook re-creates t
 so figures re-run there match the PDF. For the OpenVDM hook, a `[theme]` table can also go in
 the site TOML. Fonts must be TrueType (`.ttf`); with `font_scale` above about 1.05, narrow
 table headers such as "Status" wrap.
-
-Every command is listed by `sbe-qa-processing --help`, and documents its arguments under
-`sbe-qa-processing COMMAND --help`. They share these conventions:
-- `-o/--output` is a directory; only `site-config` writes a single file. Commands that make a
-  cruise TOML write `<OUTPUT_DIR>/<CRUISE_ID>.toml` (default `configs/`), or to stdout with
-  `-o -`.
-- Existing outputs, reports included, aren't overwritten without `--force`. The exception is
-  the `openvdm` hook, which replaces its reports after each transfer.
 
 ## What it checks
 
@@ -169,6 +265,142 @@ front of the PDF and in the notebook, named `<CRUISE>_<FILESET>`, plus:
 | `<CRUISE>_<FILESET>_qa.2.0.xml` | R2R QA 2.0 rollup report: the same tests, infos, ratings and manifest R2R's `r2r-ctd` produces, in R2R's schema and with its stylesheet reference |
 
 `run -c` takes the same cruise TOML and ignores the R2R fields.
+
+### R2R commands
+
+#### `r2r run`
+
+```text
+sbe-qa-processing r2r run [-o OUTPUT_DIR] [--force] [--execute-notebook] [--theme THEME_TOML]
+                          CRUISE_TOML FILESET_DIR
+```
+
+Assesses a fileset as `run` does, plus R2R's CTD tests, and writes the R2R QA 2.0 XML and the
+core reports with R2R's certificate.
+
+| Argument | Default | Description |
+|---|---|---|
+| `CRUISE_TOML` | required | An [R2R cruise TOML](#r2r-cruise-toml), with the cruise ID and dates |
+| `FILESET_DIR` | required | A BagIt bag or directory of casts, as for `run` |
+| `-o`, `--output OUTPUT_DIR` | `output` | Directory for the reports |
+| `--force` | off | Replace existing reports |
+| `--execute-notebook` | off | Run the notebook and save its outputs |
+| `--theme THEME_TOML` | none | A [theme](#themes) file; the cruise TOML's `[theme]` applies on top |
+
+It writes `<CRUISE>_<FILESET>_qa.2.0.xml`, `_qa_report.pdf`, `_plots/` and `_qa.ipynb`, where
+`<FILESET>` is the R2R fileset ID, or `ctd` without one. It prints the R2R rating and each
+test's rating, then the core summary.
+
+#### `r2r config-from-catalog`
+
+```text
+sbe-qa-processing r2r config-from-catalog [-o OUTPUT_DIR] [--force] CRUISE_ID FILESET_ID
+```
+
+Writes an R2R cruise TOML from R2R's catalog API: the cruise's name, chief scientist, water
+body, vessel, operator and scheduler, dates, ports and navigation bounding box. It checks that
+`FILESET_ID` is one of the cruise's CTD filesets, and lists them if it isn't.
+
+| Argument | Default | Description |
+|---|---|---|
+| `CRUISE_ID` | required | R2R cruise ID, e.g. `SP2613` |
+| `FILESET_ID` | required | R2R fileset ID, an integer, e.g. `169847` |
+| `-o`, `--output OUTPUT_DIR` | `configs` | Directory for `<CRUISE_ID>.toml`, or `-` for stdout |
+| `--force` | off | Replace an existing TOML |
+
+The API has no port coordinates, country or state, so the ports have only a name and R2R ID.
+Without a navigation bounding box in R2R, it warns and leaves out `[cruise.extent]`; R2R's
+location test is then GREY (N) until you add one.
+
+#### `r2r config-from-qa`
+
+```text
+sbe-qa-processing r2r config-from-qa [-o OUTPUT_DIR] [--force] R2R_QA_XML
+```
+
+Writes an R2R cruise TOML from the fileset info in one of R2R's QA 2.0 reports, including the
+ports' coordinates, country and state. Use it to check this tool's results against R2R's.
+
+| Argument | Default | Description |
+|---|---|---|
+| `R2R_QA_XML` | required | R2R's QA 2.0 XML for the fileset, e.g. the `r2r_qa.2.0.xml` that `r2r fetch-fileset` downloads |
+| `-o`, `--output OUTPUT_DIR` | `configs` | Directory for `<CRUISE_ID>.toml`, or `-` for stdout |
+| `--force` | off | Replace an existing TOML |
+
+#### `r2r fetch-fileset`
+
+```text
+sbe-qa-processing r2r fetch-fileset [-o OUTPUT_DIR] [--force] CRUISE_ID FILESET_ID
+```
+
+Downloads a released R2R CTD fileset (a BagIt bag) into
+`<OUTPUT_DIR>/<CRUISE_ID>_<FILESET_ID>_ctd/`, with R2R's QA report beside it as
+`r2r_qa.2.0.xml` (`r2r_qa.xml` for older filesets).
+
+| Argument | Default | Description |
+|---|---|---|
+| `CRUISE_ID` | required | R2R cruise ID |
+| `FILESET_ID` | required | R2R fileset ID, an integer |
+| `-o`, `--output OUTPUT_DIR` | `data` | Directory for the fileset's directory |
+| `--force` | off | Download into an existing fileset directory |
+
+### R2R cruise TOML
+
+An R2R cruise TOML is a [config TOML](#config-toml) with R2R's catalog details added. It must
+have `[cruise] id`, `depart_date` and `arrive_date`. The `r2r config-from-*` commands write it;
+this is `configs/RR2605.toml`, from R2R's QA report:
+
+```toml
+[cruise]
+id = "RR2605"
+name = "R/V Roger Revelle Annual Instrumentation Calibrations"
+vessel_id = "33RR"                # R2R's vessel ID: the ICES ship code
+operator_id = "edu.ucsd.sio"      # R2R organization IDs
+scheduler_id = "org.unols"
+depart_date = 2026-07-21          # required
+arrive_date = 2026-07-24          # required
+
+[cruise.extent]                   # the NAV location test; without it, GREY (N)
+westernmost = -118.632308
+easternmost = -117.224462
+southernmost = 32.61502
+northernmost = 33.370637
+
+[cruise.depart_port]              # and [cruise.arrive_port]
+name = "San Diego"
+port_id = "100055"                # R2R port ID
+country_id = "us"
+state_id = "ca"
+longitude = -117.175
+latitude = 32.71667
+
+[cruise.arrive_port]
+name = "San Diego"
+port_id = "100055"
+country_id = "us"
+state_id = "ca"
+longitude = -117.175
+latitude = 32.71667
+
+[fileset]
+id = 170644                       # R2R fileset ID; reports are named <CRUISE>_<FILESET>
+
+[provenance]
+distro_type = "post-cruise"
+```
+
+The keys it adds to a config TOML, all written to the XML:
+
+| Table | Key | Default | Description |
+|---|---|---|---|
+| `[cruise]` | `id`, `depart_date`, `arrive_date` | required | Also the dates R2R's "Dates within NAV Ranges" test uses |
+| | `vessel_id` | blank | R2R's vessel ID, the ICES ship code (e.g. `33RR`) |
+| | `operator_id`, `scheduler_id` | blank | R2R organization IDs (e.g. `edu.ucsd.sio`, `org.unols`) |
+| `[cruise.depart_port]`, `[cruise.arrive_port]` | `name`, `port_id`, `country_id`, `state_id`, `longitude`, `latitude` | blank | The ports, as in R2R's catalog |
+| `[fileset]` | `id` | blank | R2R's fileset ID. Without it, reports are named `<CRUISE>_ctd` |
+| `[provenance]` | `distro_type` | `post-cruise` | R2R's distribution type |
+| | `contact_institution_id` | blank | The contact institution's R2R organization ID |
+| `[thresholds]` | `yellow_minimum_percent` | `50.0` [%] | An R2R NAV test is YELLOW at or above this share of passing casts, else RED |
 
 ### R2R tests
 
@@ -287,6 +519,85 @@ Before this version, the hook also wrote R2R's QA XML and named its reports
 `<cruise>_ctd_...`. Those older files stay in the extra directory until removed by hand. To
 check a cruise against R2R's tests, use `r2r run` with a cruise TOML from R2R's catalog.
 
+### OpenVDM commands
+
+#### `openvdm`
+
+```text
+sbe-qa-processing openvdm [--openvdm-config OPENVDM_YAML | --site-root URL]
+                          [--site-config SITE_TOML] [--changed-files FILES]
+                          [--execute-notebook] [--theme THEME_TOML] [--fileset-id FILESET_ID]
+                          [TRANSFER]
+```
+
+The post-transfer hook: assesses the collection system transfer's CTD files for OpenVDM's
+current cruise, and writes the reports into an OpenVDM extra directory, replacing earlier ones.
+Installed `openvdm.yaml` files call it, so its arguments keep their names.
+
+| Argument | Default | Description |
+|---|---|---|
+| `TRANSFER` | `CTD` | The collection system transfer's name; in a hook, `{collectionSystemTransferName}` |
+| `--openvdm-config OPENVDM_YAML` | `/opt/openvdm/server/etc/openvdm.yaml` | OpenVDM's settings: its web root (`siteRoot`) and, from OpenVDM 2.17, the `vessel` block. Needs the `openvdm` extra |
+| `--site-root URL` | none | OpenVDM's web root, instead of `--openvdm-config`. The vessel block then comes from the cruise's `ovdmConfig.json` |
+| `--site-config SITE_TOML` | none | The ship's [site TOML](#site-toml) |
+| `--changed-files FILES` | none | OpenVDM's `{newFiles}` and `{updatedFiles}`; repeatable. When given, the QA runs only if they include CTD files. Use the `--changed-files={newFiles}` form, so an empty list isn't dropped |
+| `--execute-notebook` | off | Run the notebook and save its outputs |
+| `--theme THEME_TOML` | none | A [theme](#themes) file; the site TOML's `[theme]` applies on top |
+| `--fileset-id FILESET_ID` | none | Ignored, with a warning; older hook commands pass it |
+
+#### `config-from-openvdm`
+
+```text
+sbe-qa-processing config-from-openvdm [--openvdm-config OPENVDM_YAML | --site-root URL]
+                                      [--site-config SITE_TOML] [-o OUTPUT_DIR] [--force]
+                                      [TRANSFER]
+```
+
+Builds the config TOML the hook would use, from OpenVDM's current cruise and the site TOML,
+without running the QA, and reports what's missing or assumed. `TRANSFER`, `--openvdm-config`,
+`--site-root` and `--site-config` are as for `openvdm`.
+
+| Argument | Default | Description |
+|---|---|---|
+| `-o`, `--output OUTPUT_DIR` | `configs` | Directory for `<CRUISE_ID>.toml`, or `-` for stdout |
+| `--force` | off | Replace an existing TOML |
+
+#### `site-config`
+
+```text
+sbe-qa-processing site-config [-o SITE_TOML] [--openvdm-config OPENVDM_YAML] [--force]
+```
+
+Writes the ship's [site TOML](#site-toml) by prompting for each field on stderr; Enter keeps
+the default in brackets, and `-` clears it. Over an existing file (with `--force`), its values
+are the defaults. It works offline.
+
+| Argument | Default | Description |
+|---|---|---|
+| `-o`, `--output SITE_TOML` | `configs/site.toml` | The file to write, or `-` for stdout |
+| `--openvdm-config OPENVDM_YAML` | `/opt/openvdm/server/etc/openvdm.yaml`, when it exists | Settings already in its `vessel` block (OpenVDM 2.17) aren't asked for |
+| `--force` | off | Replace an existing site TOML |
+
+### Site TOML
+
+The per-ship settings OpenVDM doesn't store. Every field is optional;
+`configs/site.example.toml` shows them all.
+
+| Table | Key | Default | Description |
+|---|---|---|---|
+| `[vessel]` | `name` | blank | The vessel's name, for the report header. From OpenVDM 2.17, `openvdm.yaml`'s `vessel.name` wins |
+| `[extent]` | `westernmost`, `easternmost`, `southernmost`, `northernmost` | none | The expected cruise area, used when OpenVDM has no `cruiseExtent` |
+| `[openvdm]` | `output_extra_directory` | `CTD_QA` | The OpenVDM extra directory the reports go into |
+| `[provenance]` | `contact_institution`, `contact_email` | blank | The report contact. From OpenVDM 2.17, `openvdm.yaml`'s `vessel.contact` wins |
+| `[thresholds]` | as in a [config TOML](#config-toml) | defaults | e.g. for fresh water |
+| `[theme]` | as in a [config TOML](#config-toml) | none | The reports' look; paths relative to the site TOML |
+
+R2R settings from older site TOMLs (`[vessel] id`, `[cruise] operator_id` and
+`scheduler_id`, `[provenance] distro_type` and `contact_institution_id`,
+`[thresholds] yellow_minimum_percent`) are ignored with a note.
+
+### Reviewing the hook's config
+
 To review the config TOML before relying on the hook, or to run the QA by hand, write it without
 running the QA:
 
@@ -296,8 +607,7 @@ uv run sbe-qa-processing config-from-openvdm --site-config configs/site.toml \
 uv run sbe-qa-processing run /path/to/cruise/CTD -c configs/<CRUISE>.toml -o output/<CRUISE>
 ```
 
-`config-from-openvdm` takes the same OpenVDM options as the hook, plus `-o DIR` (or `-o -` for
-stdout) and `--force`. It builds the TOML the same way the hook builds its snapshot, and it
+`config-from-openvdm` builds the TOML the same way the hook builds its snapshot, and it
 reports what's missing or assumed: where the cruise extent came from, an open-ended cruise's
 end date (set to today) and site config settings that are no longer used. The hook still
 rebuilds the TOML on every run, since OpenVDM's cruise details and extent change during a

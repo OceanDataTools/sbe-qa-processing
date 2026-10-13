@@ -188,8 +188,12 @@ Every command follows these conventions:
 - Existing outputs, reports included, aren't overwritten without `--force`. The exception is
   the `openvdm` hook, which replaces its reports after each transfer.
 - A command exits 0 on success and 1 when it refuses (e.g. existing outputs) or fails with an
-  expected error (a bad theme, R2R or OpenVDM not having what was asked for), with a one-line
-  message on stderr.
+  expected error (a server that can't be reached, a bad theme, R2R or OpenVDM not having what was
+  asked for), with a one-line message on stderr, e.g.
+  `sbe-qa-processing: couldn't reach R2R (service.rvdata.us): ... Check the network connection and try again`.
+- `-v`/`--verbose`, before or after the command, logs more: `-v` is INFO and `-vv` is DEBUG
+  (default WARNING). `-vv` also prints the traceback of an expected error, e.g.
+  `sbe-qa-processing r2r fetch-fileset SP2613 169847 -vv`.
 
 #### `run`
 

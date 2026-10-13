@@ -31,14 +31,120 @@ The `.XMLCON` parser lives here, since seabirdscientific doesn't have one.
 
 ## Setup
 
-Needs [uv](https://docs.astral.sh/uv/) (`brew install uv`) and git.
+It needs [git](https://git-scm.com/) and [uv](https://docs.astral.sh/uv/), and runs on Linux,
+macOS and Windows with Python 3.11 or later. uv uses a Python 3.11+ already on the system, or
+downloads one, so the system Python doesn't matter. Every dependency installs as a prebuilt
+wheel (Linux x86_64 and ARM, macOS, Windows), so no compiler is needed. Install git and uv for
+your platform, then [install the project](#install-the-project).
+
+### Debian / Ubuntu
+
+```bash
+sudo apt update
+sudo apt install -y git curl ca-certificates
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"   # puts uv on the PATH; or open a new shell
+```
+
+Debian 12 and 13 and Ubuntu 24.04 have a new enough `python3`. On Ubuntu 22.04 (Python 3.10),
+uv downloads Python itself.
+
+### Alma / Rocky / RHEL
+
+```bash
+sudo dnf install -y git tar     # curl is already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"   # puts uv on the PATH; or open a new shell
+```
+
+The default `python3` of RHEL 8 (3.6) and 9 (3.9) is too old, so uv downloads Python itself.
+To use a system Python instead (recommended for a [server install](#server-install-for-the-openvdm-hook)),
+install Python 3.12 from AppStream with `sudo dnf install -y python3.12`. RHEL 10's `python3`
+is 3.12.
+
+### macOS
+
+```bash
+brew install git uv
+```
+
+### Windows
+
+In PowerShell:
+
+```powershell
+winget install --id Git.Git -e
+winget install --id astral-sh.uv -e
+```
+
+Or install uv with its installer:
+`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`. Open a
+new terminal afterwards, so both are on the PATH. The commands below work the same in
+PowerShell, with Windows paths, e.g.
+`uv run sbe-qa-processing run D:\cruises\MYCRUISE\CTD -o output\MYCRUISE`. The core QA and
+the R2R commands run on Windows; the OpenVDM hook runs on the Linux server where OpenVDM is
+installed.
+
+### Install the project
 
 ```bash
 git clone https://github.com/OceanDataTools/sbe-qa-processing.git
 cd sbe-qa-processing
 uv sync                                    # uv sync --extra openvdm for the OpenVDM hook
 uv run sbe-qa-processing fetch-map-data   # Natural Earth coastlines for the maps (~27 MB, once)
+uv run sbe-qa-processing --help
 ```
+
+`uv sync` makes a virtual environment in `.venv` with the exact versions in `uv.lock`. It also
+installs the dev group: pytest, ruff, and `nbclient` and `ipykernel`, which `--execute-notebook`
+needs. `uv sync --no-dev` leaves those out. `uv run` runs a command in that environment; the
+command itself is `.venv/bin/sbe-qa-processing` (`.venv\Scripts\sbe-qa-processing.exe` on
+Windows), which works without uv on the PATH.
+
+To check the install against R2R's own reports, fetch the validation filesets and run the
+tests:
+
+```bash
+uv run sbe-qa-processing r2r fetch-fileset SP2613 169847
+uv run sbe-qa-processing r2r fetch-fileset RR2605 170644
+uv run sbe-qa-processing r2r fetch-fileset BH18-18 132368
+uv run pytest
+```
+
+To update, pull and sync again: `git pull && uv sync` (with the same options as before).
+
+### Server install for the OpenVDM hook
+
+On the Linux server where OpenVDM runs, install into a shared directory such as
+`/opt/sbe-qa-processing`, which the hook example under [OpenVDM](#openvdm) uses:
+
+```bash
+sudo mkdir -p /opt/sbe-qa-processing
+sudo chown "$USER": /opt/sbe-qa-processing
+git clone https://github.com/OceanDataTools/sbe-qa-processing.git /opt/sbe-qa-processing
+cd /opt/sbe-qa-processing
+uv sync --no-dev --extra openvdm --no-managed-python      # a system Python 3.11+
+sudo /opt/sbe-qa-processing/.venv/bin/sbe-qa-processing fetch-map-data
+```
+
+Two things depend on the user the hook runs as, which is the user OpenVDM's transfer workers
+run as (check OpenVDM's supervisor configuration; when it's root, the hook also gives the
+reports to the warehouse user):
+- **Python.** The environment links to the Python it was made with. A uv-downloaded Python
+  lives in the installing user's home (`~/.local/share/uv/python`), which other users may not
+  be able to read. `--no-managed-python` makes uv use a system Python 3.11+ instead: Debian
+  12 and 13's and Ubuntu 24.04's `python3`, or `python3.12` on Alma/Rocky/RHEL 8 and 9 after
+  `sudo dnf install -y python3.12`. Where there's none (Ubuntu 22.04), leave the option out
+  and keep uv's Python in the shared directory instead, by setting
+  `UV_PYTHON_INSTALL_DIR=/opt/sbe-qa-processing/python` for this and every later `uv sync`.
+- **Map data.** cartopy caches the maps in the home of the user who downloads them
+  (`~/.local/share/cartopy`). Run `fetch-map-data` as the hook's user, e.g. with `sudo` as
+  above when the workers run as root, or `sudo -u <user>` otherwise. `fetch-map-data` prints
+  where it put them.
+
+Leave out `--no-dev` to use the hook's `--execute-notebook`.
+
+### About the dependencies
 
 seabirdscientific is installed from the `integration` branch of
 [webbpinner/seabirdscientific](https://github.com/webbpinner/seabirdscientific), not from PyPI,

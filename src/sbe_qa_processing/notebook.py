@@ -6,6 +6,7 @@ from pathlib import Path
 import nbformat
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
+from sbe_qa_processing.filenames import report_stem
 from sbe_qa_processing.qa import QAResult
 
 
@@ -166,7 +167,7 @@ def build_notebook(
         new_code_cell(
             "OUTPUT_DIR.mkdir(parents=True, exist_ok=True)\n"
             + extras.write
-            + f'print(write_pdf(result, OUTPUT_DIR / "{identifier}_qa_report.pdf"'
+            + f"print(write_pdf(result, OUTPUT_DIR / {report_stem(identifier) + '_qa_report.pdf'!r}"
             + f"{extras.pdf_arguments}, theme=theme))"
         ),
     ]

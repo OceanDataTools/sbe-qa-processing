@@ -5,6 +5,7 @@ summarizes the result for the command line. Integrations add their own pages and
 from pathlib import Path
 
 from sbe_qa_processing import qa
+from sbe_qa_processing.filenames import report_stem
 from sbe_qa_processing.notebook import NotebookExtras, write_notebook
 from sbe_qa_processing.pdf_report import FrontPages, write_pdf
 from sbe_qa_processing.qa import QAResult
@@ -12,10 +13,12 @@ from sbe_qa_processing.theme import resolve_theme
 
 
 def report_paths(output: Path, identifier: str) -> dict[str, Path]:
+    """The reports' paths in output, named after identifier made safe as a file name"""
+    stem = report_stem(identifier)
     return {
-        "pdf": output / f"{identifier}_qa_report.pdf",
-        "plots": output / f"{identifier}_plots",
-        "notebook": output / f"{identifier}_qa.ipynb",
+        "pdf": output / f"{stem}_qa_report.pdf",
+        "plots": output / f"{stem}_plots",
+        "notebook": output / f"{stem}_qa.ipynb",
     }
 
 

@@ -295,8 +295,10 @@ def written_reports(tmp_path):
 
 
 def test_openvdm_install_dir():
-    assert openvdm.openvdm_install_dir("/srv/openvdm/server/etc/openvdm.yaml") == Path(
-        "/srv/openvdm"
+    # absolute() adds the drive on Windows
+    assert (
+        openvdm.openvdm_install_dir("/srv/openvdm/server/etc/openvdm.yaml")
+        == Path("/srv/openvdm").absolute()
     )
 
 

@@ -23,6 +23,8 @@ import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sbe_qa_processing.filenames import report_stem
+
 # Stdlib only: pyyaml (the openvdm extra) is imported when openvdm.yaml is read
 from sbe_qa_processing.integrations.openvdm.hook import DEFAULT_OPENVDM_CONFIG, OpenVDMError
 from sbe_qa_processing.integrations.r2r.catalog import R2RError
@@ -68,11 +70,16 @@ def _write_text(text: str, path: Path) -> None:
     print(f"wrote {path}", file=sys.stderr)
 
 
+def _cruise_toml_path(output: Path, cruise_id: str) -> Path:
+    """<output>/<cruise_id>.toml, the cruise ID made safe as a file name"""
+    return output / f"{report_stem(cruise_id)}.toml"
+
+
 def _write_cruise_toml(text: str, cruise_id: str, args: argparse.Namespace) -> int:
     """text as <output>/<cruise_id>.toml, or to stdout for -o -"""
     destination = args.output
     if str(destination) != STDOUT:
-        destination = destination / f"{cruise_id}.toml"
+        destination = _cruise_toml_path(destination, cruise_id)
     if _refuse_overwrite(destination, args.force):
         return 1
     _write_text(text, destination)
@@ -158,7 +165,7 @@ def _openvdm(args: argparse.Namespace) -> int:
         print(f"  note: {note}")
     run.output_dir.mkdir(parents=True, exist_ok=True)
     # Snapshot what OpenVDM supplied, so the notebook can re-run exactly this assessment
-    snapshot = run.output_dir / f"{run.config.identifier}_cruise.toml"
+    snapshot = run.output_dir / f"{report_stem(run.config.identifier)}_cruise.toml"
     snapshot.write_text(openvdm.cruise_toml(run, site_root))
     result = run_qa(run.fileset_dir, snapshot)
     written = [
@@ -193,7 +200,7 @@ def _r2r_config_from_catalog(args: argparse.Namespace) -> int:
     from sbe_qa_processing.integrations.r2r.catalog import config_from_r2r_catalog
     from sbe_qa_processing.integrations.r2r.config import config_to_toml
 
-    destination = args.output / f"{args.cruise_id}.toml"
+    destination = _cruise_toml_path(args.output, args.cruise_id)
     if str(args.output) != STDOUT and _refuse_overwrite(destination, args.force):
         return 1  # before asking R2R
     config = config_from_r2r_catalog(args.cruise_id, args.fileset_id)

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
+import nbformat
 import pytest
 from conftest import CONFIGS
 from PIL import Image
@@ -186,8 +187,10 @@ def test_themed_run(tmp_path, capsys):
     assert b"DejaVuSerif" in pdf and b"DejaVuSans" not in pdf
     assert b"/Subtype /Image" in pdf  # the logo
     # The notebook re-creates the theme
-    notebook = (output / "MY_CASTS_qa.ipynb").read_text()
-    assert str(house) in notebook and "theme=theme" in notebook
+    cells = nbformat.read(output / "MY_CASTS_qa.ipynb", as_version=4).cells
+    code = "\n".join(cell.source for cell in cells)
+    # The notebook writes the path as a Python literal, so Windows backslashes are doubled
+    assert repr(str(house)) in code and "theme=theme" in code
 
 
 def test_bad_theme_is_reported_without_a_traceback(tmp_path, capsys):

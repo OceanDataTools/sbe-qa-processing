@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sbe_qa_processing import reports
+from sbe_qa_processing.filenames import report_stem
 from sbe_qa_processing.fileset import Fileset
 from sbe_qa_processing.integrations.r2r.certificate import NOTEBOOK_CELLS, certificate
 from sbe_qa_processing.integrations.r2r.config import CruiseConfig, load_cruise_config
@@ -35,7 +36,8 @@ def run_r2r(fileset: Fileset | Path | str, config: CruiseConfig | Path | str) ->
 
 
 def report_paths(output: Path, identifier: str) -> dict[str, Path]:
-    return {"xml": output / f"{identifier}_qa.2.0.xml", **reports.report_paths(output, identifier)}
+    xml = output / f"{report_stem(identifier)}_qa.2.0.xml"
+    return {"xml": xml, **reports.report_paths(output, identifier)}
 
 
 def notebook_extras(run: R2RRun, xml_name: str) -> NotebookExtras:
@@ -59,7 +61,7 @@ def notebook_extras(run: R2RRun, xml_name: str) -> NotebookExtras:
             'print(f"R2R rating {r2r.rating}")'
         ),
         cells=list(NOTEBOOK_CELLS),
-        write=f'print(write_qa_xml(result, r2r, OUTPUT_DIR / "{xml_name}"))\n',
+        write=f"print(write_qa_xml(result, r2r, OUTPUT_DIR / {xml_name!r}))\n",
         pdf_arguments=", front=certificate(result, r2r)",
     )
 

@@ -25,6 +25,12 @@ Use uv. Run from the repo root.
 - All tests: `uv run pytest`. This takes about 80 s with the R2R filesets present.
 - One test: `uv run pytest tests/test_status.py::test_name`
 - Lint and format: `uv run ruff check .` and `uv run ruff format --check .` (line length 99).
+- CI (`.github/workflows/ci.yml`) runs on PRs and pushes to `main`:
+  - `lint`: ruff;
+  - `test`: Linux on Python 3.11–3.14, plus macOS and Windows on 3.13, without `data/`, so the R2R comparisons skip;
+  - `r2r`: the full suite with the three validation filesets, cached under a fixed key and fetched from R2R only on a cache miss. Bump the key's `-vN` suffix to refetch them, and add a new validation fileset to both the key and the fetch loop.
+
+  Everything uses `uv sync --locked`, so commit `uv.lock` with `pyproject.toml` changes.
 - Fetch the R2R validation filesets into `data/`. Without them, `test_r2r_comparison.py` and parts of `test_openvdm.py` skip, and the skip message names the command:
   `uv run sbe-qa-processing r2r fetch-fileset SP2613 169847`, plus the same for `RR2605 170644` and `BH18-18 132368`.
 - Natural Earth map data for offline use: `uv run sbe-qa-processing fetch-map-data`. The tests monkeypatch the map layers, so they don't need it.
@@ -86,6 +92,7 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
    - `site_setup.py` holds `site-config`'s prompts.
 11. **`cli.py`** provides every command as a subcommand: `run`, `openvdm`, `config-from-openvdm`, `site-config`, `fetch-map-data`, and the `r2r` group (`r2r run`, `r2r config-from-catalog`, `r2r config-from-qa`, `r2r fetch-fileset`). The hook's `--fileset-id` is accepted and ignored, for installed `openvdm.yaml` files. Its module docstring states the argument conventions (`-o/--output`, `-o -`, `--force`, integer fileset IDs, uppercase metavars), and `tests/test_cli.py` checks them for every command. The `openvdm` hook's arguments are called from installed `openvdm.yaml` files, so don't rename them. It forces the matplotlib `Agg` backend. Expected errors (`cli.EXPECTED_ERRORS`: `NetworkError`, `R2RError`, `OpenVDMError`, `ThemeError`) become a one-line stderr message and exit 1; anything else raises. In `openvdm` mode every exception becomes that one-line message, because OpenVDM displays it. `-v`/`--verbose` (the OceanDataTools convention: `-v` INFO, `-vv` DEBUG) is added to every parser by `_add_verbose`, so it works before or after the command; it sets the `sbe_qa_processing` logger's level (not the root's), and `-vv` also prints expected errors' tracebacks.
 12. **`network.py`** has `reaching(service, url)`, which turns a server that can't be reached (`URLError`, timeouts, dropped connections; not `HTTPError`) into a `NetworkError` naming the service and host. Wrap every network call in it (R2R's catalog and downloads, OpenVDM's API, `maps.prefetch`), so being offline at sea is a one-line message, not a traceback.
+13. **`filenames.py`** has `safe_filename` / `report_stem`: every file named after a cruise ID or identifier (report paths, the plots directory, the notebook's write cells, the hook's snapshot, `<CRUISE_ID>.toml`) goes through `report_stem`, so `/`, `..` and Windows-forbidden characters can't move or break the reports (issue 52). Text that shows the ID (PDF title, notebook, R2R XML `identifier`) keeps it as given.
 
 ## Conventions
 

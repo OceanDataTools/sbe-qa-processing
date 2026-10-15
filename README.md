@@ -111,6 +111,10 @@ uv run sbe-qa-processing r2r fetch-fileset BH18-18 132368
 uv run pytest
 ```
 
+CI (`.github/workflows/ci.yml`) runs ruff and the tests on every PR and push to `main`: on
+Linux with Python 3.11–3.14 and on macOS and Windows, then once more with these filesets, which
+it caches so R2R only needs to be reachable the first time.
+
 To update, pull and sync again: `git pull && uv sync` (with the same options as before).
 
 ### Server install for the OpenVDM hook
@@ -268,7 +272,7 @@ page_size = "A4"
 
 | Table | Key | Used for |
 |---|---|---|
-| `[cruise]` | `id` | The reports' title and file names. Default: the fileset directory's name |
+| `[cruise]` | `id` | The reports' title and file names. Default: the fileset directory's name. In file names, characters that aren't valid in a file name on every platform (`/ \ < > : " \| ? *`, control characters) become `_`, with a warning; the title keeps the ID as given |
 | | `name`, `pi`, `location`, `vessel_name` | The report header, when given |
 | | `depart_date`, `arrive_date` | "Cast time inside the expected dates" (needs both; n/a without them) |
 | `[cruise.extent]` | `westernmost`, `easternmost`, `southernmost`, `northernmost` | "Position inside the expected area" (n/a without it) and the box on the cast map. All four are needed. A box across the antimeridian has `westernmost` > `easternmost`, e.g. 178 to -178 |

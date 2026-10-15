@@ -1,5 +1,6 @@
 """Regressions for the code review findings (issues 39-48)."""
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -57,7 +58,9 @@ def test_markup_characters_in_report_text(tmp_path):
     from sbe_qa_processing.config import QAConfig
     from sbe_qa_processing.pdf_report import write_pdf
 
-    fileset = tmp_path / "A<B & C>"
+    # Windows doesn't allow < or > in directory names. The cruise ID only names files through
+    # filenames.safe_filename, so it can keep them on every OS (issue 52)
+    fileset = tmp_path / ("A&B C" if os.name == "nt" else "A<B & C>")
     fileset.mkdir()
     config = QAConfig(cruise_id="T<S", cruise_name="R/V <Atlantis> & friends", cruise_pi="A<B")
     result = qa.run_qa(fileset, config)

@@ -25,6 +25,12 @@ Use uv. Run from the repo root.
 - All tests: `uv run pytest`. This takes about 80 s with the R2R filesets present.
 - One test: `uv run pytest tests/test_status.py::test_name`
 - Lint and format: `uv run ruff check .` and `uv run ruff format --check .` (line length 99).
+- CI (`.github/workflows/ci.yml`) runs on PRs and pushes to `main`:
+  - `lint`: ruff;
+  - `test`: Linux on Python 3.11–3.14, plus macOS and Windows on 3.13, without `data/`, so the R2R comparisons skip;
+  - `r2r`: the full suite with the three validation filesets, cached under a fixed key and fetched from R2R only on a cache miss. Bump the key's `-vN` suffix to refetch them, and add a new validation fileset to both the key and the fetch loop.
+
+  Everything uses `uv sync --locked`, so commit `uv.lock` with `pyproject.toml` changes.
 - Fetch the R2R validation filesets into `data/`. Without them, `test_r2r_comparison.py` and parts of `test_openvdm.py` skip, and the skip message names the command:
   `uv run sbe-qa-processing r2r fetch-fileset SP2613 169847`, plus the same for `RR2605 170644` and `BH18-18 132368`.
 - Natural Earth map data for offline use: `uv run sbe-qa-processing fetch-map-data`. The tests monkeypatch the map layers, so they don't need it.

@@ -131,11 +131,13 @@ def test_cast_and_fileset():
     )
     fileset = Fileset(Path("/bag"), Path("/bag/data"), [cast(), cast("DeckTest")], is_bag=True)
     assert str(fileset) == (
-        "BagIt bag /bag: 2 casts, 1 deck test\n"
+        f"BagIt bag {Path('/bag')}: 2 casts, 1 deck test\n"
         "  STN1: STN1.hex, STN1.XMLCON, STN1.hdr, STN1.bl\n"
         "  DeckTest: DeckTest.hex, DeckTest.XMLCON, DeckTest.hdr, DeckTest.bl (deck test)"
     )
-    assert str(Fileset(Path("/casts"), Path("/casts"), [])) == "Directory /casts: 0 casts"
+    assert (
+        str(Fileset(Path("/casts"), Path("/casts"), [])) == f"Directory {Path('/casts')}: 0 casts"
+    )
 
 
 def test_cast_data():
@@ -213,7 +215,7 @@ def test_bottle_fire():
 
 def test_qa_result():
     assert str(qa_result()) == (
-        "SP2613: 2 casts (1 converted, 1 deck test) in /bag\n"
+        f"SP2613: 2 casts (1 converted, 1 deck test) in {Path('/bag')}\n"
         "  run 2026-07-09 18:00:00 UTC, 2.5 s; sbe-qa-processing 0.1.0\n"
         "  integrity checks: 1 pass, 1 warn\n"
         "    Cast position warn (1 of 2 casts pass): DeckTest: none\n"

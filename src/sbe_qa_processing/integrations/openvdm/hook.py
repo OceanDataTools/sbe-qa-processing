@@ -444,7 +444,8 @@ def queue_md5_update(install_dir: Path, run: HookRun, written: list[Path]) -> st
         }
     )
     try:
-        relative = [str(f.relative_to(run.cruise_dir)) for f in files]
+        # OpenVDM's MD5 summary uses / separators on every platform
+        relative = [f.relative_to(run.cruise_dir).as_posix() for f in files]
     except ValueError:
         return f"the reports in {run.output_dir} are outside the cruise directory {run.cruise_dir}"
     command = [str(python), str(script), "--cruiseID", run.config.cruise_id, *relative]

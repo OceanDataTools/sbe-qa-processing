@@ -111,6 +111,10 @@ uv run sbe-qa-processing r2r fetch-fileset BH18-18 132368
 uv run pytest
 ```
 
+CI (`.github/workflows/ci.yml`) runs ruff and the tests on every PR and push to `main`: on
+Linux with Python 3.11–3.14 and on macOS and Windows, then once more with these filesets, which
+it caches so R2R only needs to be reachable the first time.
+
 To update, pull and sync again: `git pull && uv sync` (with the same options as before).
 
 ### Server install for the OpenVDM hook

@@ -36,6 +36,7 @@ from svglib.svglib import svg2rlg
 
 from sbe_qa_processing import plots
 from sbe_qa_processing.bottles import bottle_fires
+from sbe_qa_processing.filenames import report_stem
 from sbe_qa_processing.loadout import cast_loadout, instrument_settings
 from sbe_qa_processing.qa import QAResult
 from sbe_qa_processing.science import FAIL, PASS, WARN
@@ -560,11 +561,13 @@ def write_pdf(
     theme: Theme = DEFAULT_THEME,
 ) -> Path:
     """Writes the PDF, and the SVG plots it embeds into `plots_dir` (default:
-    <pdf directory>/<identifier>_plots). `front` makes the pages an integration puts between
+    <pdf directory>/<identifier>_plots, the identifier made safe as a file name). `front` makes the pages an integration puts between
     the title and the fileset overview, e.g. R2R's certificate
     """
     path = Path(path)
-    plots_dir = Path(plots_dir) if plots_dir else path.parent / f"{result.config.identifier}_plots"
+    if plots_dir is None:
+        plots_dir = path.parent / f"{report_stem(result.config.identifier)}_plots"
+    plots_dir = Path(plots_dir)
     svgs = write_plot_svgs(result, plots_dir, theme)
     lay = layout(theme)
 

@@ -757,28 +757,26 @@ cruise.
 ## seabirdscientific version
 
 seabirdscientific comes from PyPI, version 3.0.0 or later: the first release with the fixes
-below. `uv.lock` pins the version; update it with `uv lock --upgrade-package seabirdscientific`.
-The tool also works on older versions without these fixes, with the workarounds noted.
+below, which this tool relies on. `uv.lock` pins the version; update it with
+`uv lock --upgrade-package seabirdscientific`.
 
 To develop against a local seabirdscientific checkout instead, install it over the locked one
 with `uv pip install -e path/to/seabirdscientific` and run commands with `uv run --no-sync`
 (a plain `uv run` or `uv sync` puts the locked version back).
 
-- **911plus status bits read in reverse**
-  ([fork issue 24](https://github.com/webbpinner/seabirdscientific/issues/24); fixed in 3.0.0). Older seabirdscientific reads the status nibble
-  most significant bit first, so its "pump status" is really the modem bit. `status.py` checks
-  at runtime how the installed version decodes a scan with only the pump bit set, and reads the
-  bits correctly either way. Real data shows the documented order: deck tests 0b0010, casts
-  0b0011, 0b0111 while bottles fire.
+- **911plus status bits**
+  ([fork issue 24](https://github.com/webbpinner/seabirdscientific/issues/24)). Earlier
+  versions read the status nibble most significant bit first, so their "pump status" was really
+  the modem bit. Real data shows the documented order: deck tests 0b0010, casts 0b0011, 0b0111
+  while bottles fire.
 - **TS contour grid**
-  ([fork issue 21](https://github.com/webbpinner/seabirdscientific/issues/21); fixed in 3.0.0). Older versions stop the grid short of the coldest
-  samples and can return a one-column grid for a narrow salinity range (e.g. fresh water); the
-  TS plot then skips the contours. The fix also uses a finer temperature step (0.1 °C) and
-  wider salinity padding, so the σ0 contours are smoother.
-  Either way, the plot zooms to the data and picks contour levels from the density range in
-  view.
+  ([fork issue 21](https://github.com/webbpinner/seabirdscientific/issues/21)). Earlier
+  versions stopped the grid short of the coldest samples and could return a one-column grid for
+  a narrow salinity range (e.g. fresh water). The TS plot zooms to the data and picks contour
+  levels from the density range in view.
 - **`eos80_processing.potential_temperature` ignored in-situ pressure**
-  ([fork issue 19](https://github.com/webbpinner/seabirdscientific/issues/19); fixed in 3.0.0). Not used by this tool.
+  ([fork issue 19](https://github.com/webbpinner/seabirdscientific/issues/19)). Not used by
+  this tool.
 - Temperature and conductivity coefficients have no slope/offset in seabirdscientific; the
   `.XMLCON` slope/offset is applied here. Digiquartz pressure slope/offset is applied by
   seabirdscientific.

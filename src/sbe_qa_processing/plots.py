@@ -178,31 +178,18 @@ def _ts_diagram(data: CastData, theme: Theme) -> Figure:
     y_view = _padded_range(contour.y, minimum_pad=0.1)
     axis.set_xlim(*x_view)
     axis.set_ylim(*y_view)
-    # seabirdscientific versions before the contour grid fix can return a one-column grid for
-    # a narrow salinity range (e.g. fresh water)
-    if min(contour.z_mat.shape) >= 2:
-        # Levels spanning the density range inside the view, so lines appear at any scale
-        corners = gsw.rho(np.array(x_view)[:, None], np.array(y_view)[None, :], 0).ravel() - 1000
-        levels = MaxNLocator(8).tick_values(corners.min(), corners.max())
-        lines = axis.contour(
-            contour.x_vec,
-            contour.y_vec,
-            contour.z_mat,
-            levels=levels,
-            colors="0.6",
-            linewidths=0.5,
-        )
-        axis.clabel(lines, fontsize=_pt(theme, 6), fmt=lambda level: f"{level:g}")
-    else:
-        axis.text(
-            0.02,
-            0.98,
-            "density grid too narrow to contour",
-            transform=axis.transAxes,
-            fontsize=_pt(theme, 7),
-            color="0.4",
-            va="top",
-        )
+    # Levels spanning the density range inside the view, so lines appear at any scale
+    corners = gsw.rho(np.array(x_view)[:, None], np.array(y_view)[None, :], 0).ravel() - 1000
+    levels = MaxNLocator(8).tick_values(corners.min(), corners.max())
+    lines = axis.contour(
+        contour.x_vec,
+        contour.y_vec,
+        contour.z_mat,
+        levels=levels,
+        colors="0.6",
+        linewidths=0.5,
+    )
+    axis.clabel(lines, fontsize=_pt(theme, 6), fmt=lambda level: f"{level:g}")
     # At most TS_MAX_POINTS evenly spaced scans: indistinguishable at page scale, and keeps the
     # SVG small (a deep cast has ~80,000 downcast scans)
     keep = np.unique(np.linspace(0, len(contour.x) - 1, TS_MAX_POINTS).astype(int))

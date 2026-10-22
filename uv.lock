@@ -2204,7 +2204,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.2" },
     { name = "pyyaml", marker = "extra == 'openvdm'", specifier = ">=6.0" },
     { name = "reportlab", specifier = ">=4.2" },
-    { name = "seabirdscientific", git = "https://github.com/webbpinner/seabirdscientific?rev=integration" },
+    { name = "seabirdscientific", specifier = ">=3.0.0" },
     { name = "shapely", specifier = ">=2.0" },
     { name = "svglib", specifier = ">=1.5" },
 ]
@@ -2376,8 +2376,8 @@ wheels = [
 
 [[package]]
 name = "seabirdscientific"
-version = "3.0.0a41+fork"
-source = { git = "https://github.com/webbpinner/seabirdscientific?rev=integration#89e10456159129152f28f6afa335a8b3c27ed4b1" }
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "gsw" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -2387,6 +2387,10 @@ dependencies = [
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "seawater" },
     { name = "xarray" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2d/dd/11a54c535da36c4dc4541ef66638e7c3c164eae282b05ba82ccb63698080/seabirdscientific-3.0.0.tar.gz", hash = "sha256:b9b724bfabedf6a3edd26b484b0199ffc59ff01c0eca098cbeb04710d0fd29d4", size = 91189, upload-time = "2026-10-14T20:59:02.639Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8f/b2/9516d8871afc51d106450fdd9090dc53effdaf4d4c47d3df0de80dd4284f/seabirdscientific-3.0.0-py3-none-any.whl", hash = "sha256:91fa8c83597d2281d85f229371e7e97075a84bad22be677736ca44d2bccc7470", size = 66011, upload-time = "2026-10-14T20:59:01.548Z" },
 ]
 
 [[package]]

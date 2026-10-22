@@ -7,9 +7,8 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
-  # The fork's integration branch: upstream v3.0.0 plus every pending fix. A direct reference,
-  # so pip installs it too (pip ignores [tool.uv.sources]); PyPI's seabirdscientific is 2.x
-  "seabirdscientific @ git+https://github.com/webbpinner/seabirdscientific@integration",
+  # 3.0.0 is the first release with the 911plus status-bit and TS contour-grid fixes
+  "seabirdscientific >= 3.0.0",
   "gsw >= 3.6.19",
   "matplotlib >= 3.9",
   "nbformat >= 5.10",
@@ -40,9 +39,6 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.ruff]
 line-length = 99

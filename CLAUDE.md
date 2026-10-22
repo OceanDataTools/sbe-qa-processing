@@ -45,11 +45,10 @@ Use uv. Run from the repo root.
 
 ## seabirdscientific dependency
 
-- seabirdscientific comes from git: the `integration` branch of the fork `webbpinner/seabirdscientific`, which is upstream's `v3.0.0` branch plus the fork's pending changes. Upstream merged the status-bit (fork issue 24) and contour-grid (fork issue 21) fixes into its `v3.0.0` branch on 2026-10-12/13, but no release has them yet (PyPI: `3.0.0a36` pre-release, 2.8.1 stable); the fork still carries the `potential_temperature` fix (fork issue 19). It's a direct reference in `[project].dependencies` (`seabirdscientific @ git+...@integration`, which needs hatch's `allow-direct-references`), not a `[tool.uv.sources]` entry, so pip installs the fork too. PyPI's seabirdscientific is 2.x and won't work. `uv.lock` pins its commit.
-- **Long-term goal:** depend on the official seabirdscientific release instead of the fork. Once a release has the fixes this tool needs, switch the dependency to a version range (e.g. `seabirdscientific >= 3.0.0`) and drop `allow-direct-references`. Keep the runtime version detection in `status.py` and the TS plot until older releases no longer matter.
-- That branch is rebuilt and force-pushed whenever a fork PR branch changes. Afterwards, run `uv lock --upgrade-package seabirdscientific`, re-run the tests, and commit `uv.lock`.
-- To try unpushed seabirdscientific changes, install a local checkout over the locked one: `uv pip install -e ../../Sea-BirdScientific/seabirdscientific`. Then use `uv run --no-sync ...`, because a plain `uv run`/`uv sync` reverts to the lock.
-- The code must keep working on released seabirdscientific without those fixes too:
+- seabirdscientific comes from PyPI: `seabirdscientific >= 3.0.0` in `[project].dependencies`, and `uv.lock` pins the version. 3.0.0 (2026-10-14) is the first release with the status-bit (fork issue 24), contour-grid (fork issue 21) and `potential_temperature` (fork issue 19) fixes; 2.x won't work. Update with `uv lock --upgrade-package seabirdscientific`, re-run the tests, and commit `uv.lock`.
+- The fork `webbpinner/seabirdscientific` is where fixes are prepared. If this tool needs an unreleased fix again, prefer waiting for a release; a git dependency on the fork needs hatch's `allow-direct-references` again.
+- To try unreleased seabirdscientific changes, install a local checkout over the locked one: `uv pip install -e ../../Sea-BirdScientific/seabirdscientific`. Then use `uv run --no-sync ...`, because a plain `uv run`/`uv sync` reverts to the lock.
+- The code keeps working on seabirdscientific without those fixes too:
   - `status.py` detects at runtime whether the installed version reads the 911plus status nibble reversed (fork issue 24).
   - The TS plot copes with the old one-column contour grid (fork issue 21).
   - Keep such workarounds version-detecting, not version-pinned.

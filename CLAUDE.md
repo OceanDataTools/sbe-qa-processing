@@ -48,10 +48,7 @@ Use uv. Run from the repo root.
 - seabirdscientific comes from PyPI: `seabirdscientific >= 3.0.0` in `[project].dependencies`, and `uv.lock` pins the version. 3.0.0 (2026-10-14) is the first release with the status-bit (fork issue 24), contour-grid (fork issue 21) and `potential_temperature` (fork issue 19) fixes; 2.x won't work. Update with `uv lock --upgrade-package seabirdscientific`, re-run the tests, and commit `uv.lock`.
 - The fork `webbpinner/seabirdscientific` is where fixes are prepared. If this tool needs an unreleased fix again, prefer waiting for a release; a git dependency on the fork needs hatch's `allow-direct-references` again.
 - To try unreleased seabirdscientific changes, install a local checkout over the locked one: `uv pip install -e ../../Sea-BirdScientific/seabirdscientific`. Then use `uv run --no-sync ...`, because a plain `uv run`/`uv sync` reverts to the lock.
-- The code keeps working on seabirdscientific without those fixes too:
-  - `status.py` detects at runtime whether the installed version reads the 911plus status nibble reversed (fork issue 24).
-  - The TS plot copes with the old one-column contour grid (fork issue 21).
-  - Keep such workarounds version-detecting, not version-pinned.
+- The code relies on those fixes: `status.py` reads the 911plus status fields in 3.0.0's order, and the TS plot assumes a full contour grid. `tests/test_status.py` checks the installed version's bit order. If a future fix is needed before a release, a version-detecting workaround beats a version pin.
 - **Never contact upstream** (`Sea-BirdScientific/seabirdscientific`): no issues, PRs, comments, or `Sea-BirdScientific/seabirdscientific#N` references in commits or issues. Refer to seabirdscientific bugs as fork issues by full URL (`https://github.com/webbpinner/seabirdscientific/issues/N`).
 - seabirdscientific has no slope/offset for temperature and conductivity, so `cast.py` applies the `.XMLCON` slope/offset. Digiquartz pressure slope/offset is applied inside seabirdscientific.
 

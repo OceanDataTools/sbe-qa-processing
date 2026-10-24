@@ -2376,7 +2376,7 @@ wheels = [
 
 [[package]]
 name = "seabirdscientific"
-version = "3.0.0"
+version = "3.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "gsw" },
@@ -2388,9 +2388,9 @@ dependencies = [
     { name = "seawater" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2d/dd/11a54c535da36c4dc4541ef66638e7c3c164eae282b05ba82ccb63698080/seabirdscientific-3.0.0.tar.gz", hash = "sha256:b9b724bfabedf6a3edd26b484b0199ffc59ff01c0eca098cbeb04710d0fd29d4", size = 91189, upload-time = "2026-10-14T20:59:02.639Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e6/28/5e4c8d6540497c9d54f56f721bab70f85b3869740e0890433e5f976971f7/seabirdscientific-3.1.1.tar.gz", hash = "sha256:ee7675ef8a27f70cceaf4fb518e43025ad8070079608ec05cc366466c51a4864", size = 91881, upload-time = "2026-10-23T21:34:31.257Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/b2/9516d8871afc51d106450fdd9090dc53effdaf4d4c47d3df0de80dd4284f/seabirdscientific-3.0.0-py3-none-any.whl", hash = "sha256:91fa8c83597d2281d85f229371e7e97075a84bad22be677736ca44d2bccc7470", size = 66011, upload-time = "2026-10-14T20:59:01.548Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/f4/b2007475017bf338376303d87eb570814bfc6d551c9f298ad7dc1ad076fe/seabirdscientific-3.1.1-py3-none-any.whl", hash = "sha256:e26d96b584372543eb5f3146efa96de9586381894e800192593b25a2dc5caef5", size = 66715, upload-time = "2026-10-23T21:34:30.191Z" },
 ]
 
 [[package]]

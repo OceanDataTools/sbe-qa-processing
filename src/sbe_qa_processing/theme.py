@@ -22,12 +22,11 @@ Relative paths are relative to the TOML file.
 """
 
 import re
-import tomllib
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sbe_qa_processing.config import toml_value
+from sbe_qa_processing.config import read_toml, toml_value
 
 if TYPE_CHECKING:
     from sbe_qa_processing.config import QAConfig
@@ -183,8 +182,7 @@ def apply_table(base: Theme, table: dict) -> Theme:
 def load_theme(path: Path | str) -> Theme:
     """A theme file: the [theme] table's settings at its top level"""
     path = Path(path)
-    with open(path, "rb") as file:
-        data = tomllib.load(file)
+    data = read_toml(path, "theme TOML")
     return apply_table(DEFAULT_THEME, theme_table(data, path.parent, str(path)))
 
 

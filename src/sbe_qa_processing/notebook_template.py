@@ -51,6 +51,7 @@ pd.set_option("display.max_colwidth", 120)
 result = run_qa(FILESET, CONFIG)  # @run
 theme = resolve_theme(THEME_FILE, result.config)
 print(f"{len(result.casts)} casts read")
+print(result.verdict[1])  # the checks in a line, as under the PDF's title
 # @after_run
 
 # %%

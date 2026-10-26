@@ -13,7 +13,7 @@ from sbe_qa_processing.config import QAConfig, load_config
 from sbe_qa_processing.fileset import Fileset, load_fileset
 from sbe_qa_processing.integrity import IntegrityResult, run_integrity_checks
 from sbe_qa_processing.readable import Readable, counts, plural, timestamp
-from sbe_qa_processing.science import CheckResult, run_science_checks
+from sbe_qa_processing.science import FAIL, NA, PASS, WARN, CheckResult, run_science_checks
 
 
 @dataclass
@@ -32,6 +32,16 @@ class QAResult(Readable):
     def science_casts(self) -> list[CastData]:
         """Converted casts that aren't deck tests"""
         return [c for c in self.casts if c.converted and not c.cast.is_deck_test]
+
+    @property
+    def verdict(self) -> tuple[str, str]:
+        """The checks in a line, under the PDF's title: the worst status of those that could be
+        made, and which didn't pass, e.g. "1 of 7 integrity checks warns: Position inside the
+        expected area (3 of 4 casts pass). 2 of 4 casts warn in the science checks: Salinity
+        agreement (CTD001, CTD002)." Info checks are left out and n/a integrity
+        checks named, never counted as problems. It's not a rating, which is R2R's
+        """
+        return verdict(self)
 
     def __str__(self) -> str:
         converted = sum(c.converted for c in self.casts)
@@ -134,3 +144,80 @@ def _science_problems(result: QAResult) -> list[str]:
         for check in checks
         if check.status in ("warn", "fail")
     ]
+
+
+VERDICT_CASTS = 3  # at most this many casts are named for a science check; more are counted
+
+
+def _worst(statuses) -> str:
+    statuses = set(statuses)
+    return FAIL if FAIL in statuses else WARN if WARN in statuses else PASS
+
+
+def _which(names: list[str], total: int) -> str:
+    """The casts a check didn't pass in: all of them, their names, or how many"""
+    if len(names) == total > 1:
+        return f"all {total}"
+    return ", ".join(names) if len(names) <= VERDICT_CASTS else f"{len(names)} casts"
+
+
+def verdict(result: QAResult) -> tuple[str, str]:
+    """QAResult.verdict: (status, text)"""
+    sentences, statuses = [], []
+
+    checks = result.integrity.fileset
+    judged = [c for c in checks if c.status in (PASS, WARN, FAIL)]
+    missing = [c.name for c in checks if c.status == NA]
+    problems = [c for c in judged if c.status != PASS]
+    total = len(judged) + len(missing)
+    if not judged:
+        sentences.append("No integrity check could be made.")
+    elif not problems:
+        statuses.append(PASS)
+        if missing:
+            verb = "pass" if len(judged) > 1 else "passes"
+            sentences.append(f"{len(judged)} of {plural(total, 'integrity check')} {verb}.")
+        elif total == 1:
+            sentences.append("The integrity check passes.")
+        else:
+            sentences.append(f"All {total} integrity checks pass.")
+    else:
+        status = _worst(c.status for c in problems)
+        statuses.append(status)
+        verb = status if len(problems) > 1 else f"{status}s"
+        listed = "; ".join(f"{c.name} ({c.value})" for c in problems)
+        sentences.append(
+            f"{len(problems)} of {plural(total, 'integrity check')} {verb}: {listed}."
+        )
+
+    casts = {
+        cast: [c for c in cs if c.status in (PASS, WARN, FAIL)]
+        for cast, cs in result.science.items()
+    }
+    casts = {cast: cs for cast, cs in casts.items() if cs}
+    bad = {cast: cs for cast, cs in casts.items() if any(c.status != PASS for c in cs)}
+    if not casts:
+        sentences.append("No cast for the science checks.")
+    elif not bad:
+        statuses.append(PASS)
+        every = "The cast passes" if len(casts) == 1 else f"All {len(casts)} casts pass"
+        sentences.append(f"{every} the science checks.")
+    else:
+        status = _worst(c.status for cs in bad.values() for c in cs)
+        statuses.append(status)
+        # By check, with the casts it didn't pass in: named when few, else counted
+        by_check: dict[str, list[str]] = {}
+        for cast, cs in bad.items():
+            for c in cs:
+                if c.status != PASS:
+                    by_check.setdefault(c.name, []).append(cast)
+        listed = ", ".join(
+            f"{name} ({_which(names, len(casts))})" for name, names in by_check.items()
+        )
+        verb = status if len(bad) > 1 else f"{status}s"
+        sentences.append(
+            f"{len(bad)} of {plural(len(casts), 'cast')} {verb} in the science checks: {listed}."
+        )
+    if missing:
+        sentences.append(f"n/a: {', '.join(missing)}.")
+    return (_worst(statuses) if statuses else NA), " ".join(sentences)

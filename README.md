@@ -224,6 +224,9 @@ Downloads the Natural Earth layers the cast map uses (1:10m land, lakes and coas
 1:110m world for the inset, about 27 MB) into cartopy's data directory, so the maps have
 coastlines offline, e.g. at sea. It takes no arguments.
 
+With the environment variable `SBE_QA_NO_MAP_DATA` set, no layer is loaded or downloaded, and
+the maps are drawn without coastlines. The tests set it.
+
 ### Config TOML
 
 A config TOML describes the cruise for the reports, sets the expected area and dates for the

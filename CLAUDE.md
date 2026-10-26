@@ -33,7 +33,7 @@ Use uv. Run from the repo root.
   Everything uses `uv sync --locked`, so commit `uv.lock` with `pyproject.toml` changes.
 - Fetch the R2R validation filesets into `data/`. Without them, `test_r2r_comparison.py` and parts of `test_openvdm.py` skip, and the skip message names the command:
   `uv run sbe-qa-processing r2r fetch-fileset SP2613 169847`, plus the same for `RR2605 170644` and `BH18-18 132368`.
-- Natural Earth map data for offline use: `uv run sbe-qa-processing fetch-map-data`. The tests monkeypatch the map layers, so they don't need it.
+- Natural Earth map data for offline use: `uv run sbe-qa-processing fetch-map-data`. The tests never download it or depend on it: `conftest` sets `SBE_QA_NO_MAP_DATA` for the session, which makes every layer unavailable (maps without coastlines). A test marked `map_data` uses the data when it's cached and skips otherwise.
 - Run on a fileset: `uv run sbe-qa-processing run data/SP2613_169847_ctd [-c configs/SP2613.toml] -o output/SP2613 [--force] [--execute-notebook]`. Without `-c`, the reports are titled after the fileset directory.
 - Run with R2R's tests and XML: `uv run sbe-qa-processing r2r run configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--force] [--execute-notebook]`
 - Make a cruise TOML from R2R's catalog API: `uv run sbe-qa-processing r2r config-from-catalog CRUISE_ID FILESET_ID [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`. It uses `integrations.r2r.catalog.config_from_r2r_catalog`. The API has no port coordinates, country or state.

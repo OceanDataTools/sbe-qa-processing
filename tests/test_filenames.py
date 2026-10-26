@@ -8,7 +8,8 @@ import nbformat
 import pytest
 
 from sbe_qa_processing import filenames
-from sbe_qa_processing.cli import _cruise_toml_path, main
+from sbe_qa_processing.cli import main
+from sbe_qa_processing.clitools import cruise_toml_path
 from sbe_qa_processing.filenames import report_stem, safe_filename
 
 
@@ -53,9 +54,9 @@ def test_report_stem_warns_once(caplog):
     ]
 
 
-def test_cruise_toml_path():
-    assert _cruise_toml_path(Path("configs"), "AT50/12") == Path("configs") / "AT50_12.toml"
-    assert _cruise_toml_path(Path("configs"), "NUL") == Path("configs") / "_NUL.toml"
+def testcruise_toml_path():
+    assert cruise_toml_path(Path("configs"), "AT50/12") == Path("configs") / "AT50_12.toml"
+    assert cruise_toml_path(Path("configs"), "NUL") == Path("configs") / "_NUL.toml"
 
 
 @pytest.mark.parametrize(

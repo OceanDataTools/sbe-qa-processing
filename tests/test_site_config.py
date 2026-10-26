@@ -17,7 +17,10 @@ from sbe_qa_processing.integrations.openvdm.hook import (
 @pytest.fixture(autouse=True)
 def no_openvdm_install(monkeypatch, tmp_path):
     """site-config reads /opt/openvdm's openvdm.yaml when it exists; not in these tests"""
-    monkeypatch.setattr("sbe_qa_processing.cli.DEFAULT_OPENVDM_CONFIG", tmp_path / "missing.yaml")
+    monkeypatch.setattr(
+        "sbe_qa_processing.integrations.openvdm.cli.DEFAULT_OPENVDM_CONFIG",
+        tmp_path / "missing.yaml",
+    )
 
 
 def answer(monkeypatch, *lines: str) -> None:

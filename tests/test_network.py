@@ -114,6 +114,17 @@ def test_unexpected_errors_still_raise(monkeypatch):
         main(["r2r", "config-from-catalog", "SP2613", "169847", "-o", "-"])
 
 
+def test_the_hook_reports_even_unexpected_errors_in_one_line(monkeypatch, capsys):
+    """OpenVDM displays the hook's failure message, so a bug is one line there too"""
+
+    def broken(*args, **kwargs):
+        raise KeyError("a bug")
+
+    monkeypatch.setattr(hook.urllib.request, "urlopen", broken)
+    assert main(["openvdm", "--site-root", "http://openvdm.example/"]) == 1
+    assert capsys.readouterr().err == "sbe-qa-processing: KeyError: 'a bug'\n"
+
+
 @pytest.mark.parametrize(
     "flags, level",
     [

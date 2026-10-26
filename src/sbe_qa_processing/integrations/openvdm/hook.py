@@ -23,18 +23,25 @@ import os
 import re
 import shutil
 import subprocess
-import tomllib
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 from sbe_qa_processing.config import (
+    CORE_KEYS,
+    EXTENT_KEYS,
+    INTEGRATION_THRESHOLDS,
+    KEY,
     Extent,
     QAConfig,
     Thresholds,
+    check_keys,
     config_to_toml,
+    extent_from_table,
     fields_of,
+    merge_keys,
+    read_toml,
     thresholds_from_table,
     thresholds_toml,
     toml_value,
@@ -100,11 +107,25 @@ R2R_SETTINGS = {
 }
 
 
+# What a site TOML may have: its own tables, core's [provenance], [thresholds] and [theme], and
+# the old R2R settings, which are ignored with a note
+SITE_KEYS = merge_keys(
+    {
+        "vessel": {"name": KEY},
+        "extent": EXTENT_KEYS,
+        "openvdm": dict.fromkeys(("output_extra_directory", "tracklines_extra_directory"), KEY),
+        **{table: CORE_KEYS[table] for table in ("provenance", "thresholds", "theme")},
+    },
+    {table: dict.fromkeys(keys, KEY) for table, keys in R2R_SETTINGS.items()},
+    {"thresholds": dict.fromkeys(INTEGRATION_THRESHOLDS, KEY)},
+)
+
+
 def load_site_config(path: Path | str | None) -> SiteConfig:
     if path is None:
         return SiteConfig()
-    with open(path, "rb") as file:
-        data = tomllib.load(file)
+    data = read_toml(path, "site TOML")
+    check_keys(data, SITE_KEYS, str(path))
     vessel, openvdm = data.get("vessel", {}), data.get("openvdm", {})
     provenance = data.get("provenance", {})
     ignored = [
@@ -122,7 +143,9 @@ def load_site_config(path: Path | str | None) -> SiteConfig:
     defaults = SiteConfig()
     return SiteConfig(
         vessel_name=vessel.get("name", ""),
-        extent=Extent(**data["extent"]) if "extent" in data else None,
+        extent=extent_from_table(data["extent"], f"{path}: [extent]")
+        if "extent" in data
+        else None,
         output_extra_directory=openvdm.get(
             "output_extra_directory", defaults.output_extra_directory
         ),

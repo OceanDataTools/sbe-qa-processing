@@ -184,7 +184,8 @@ Every command follows these conventions:
   the `openvdm` hook, which replaces its reports after each transfer.
 - A command exits 0 on success and 1 when it refuses (e.g. existing outputs) or fails with an
   expected error (a server that can't be reached, a fileset directory that isn't there, a bad
-  theme, R2R or OpenVDM not having what was asked for), with a one-line message on stderr, e.g.
+  config or theme, R2R or OpenVDM not having what was asked for), with a one-line message on
+  stderr, e.g.
   `sbe-qa-processing: couldn't reach R2R (service.rvdata.us): ... Check the network connection and try again`.
 - `-v`/`--verbose`, before or after the command, logs more: `-v` is INFO and `-vv` is DEBUG
   (default WARNING). `-vv` also prints the traceback of an expected error, e.g.
@@ -289,9 +290,13 @@ page_size = "A4"
 | `max_calibration_age_days` | `365` [days] | Sensors calibrated longer ago than this at the time of the cast warn |
 
 Parsing rules:
-- An unknown key in `[thresholds]` or `[theme]` is an error, so a typo doesn't go unnoticed.
-- Other tables and keys are ignored, so an [R2R cruise TOML](#r2r-cruise-toml) or an OpenVDM
-  snapshot works as a config too.
+- An unknown key is an error, so a typo doesn't go unnoticed. The message names every one and
+  where it belongs, e.g. `[cruise] depart_dat: did you mean depart_date?` or
+  `extent (top level): did you mean [cruise.extent]?`.
+- So is a value of the wrong shape (a value where a table belongs, or the reverse), a date
+  that isn't a TOML date, or a `[cruise.extent]` without all four edges.
+- The keys of an [R2R cruise TOML](#r2r-cruise-toml) are accepted and left to the `r2r`
+  commands, so an R2R cruise TOML or an OpenVDM snapshot works as a config too.
 - Relative paths (`[fileset] manifest`, theme fonts and logo) are relative to the TOML file.
 
 ### Themes
@@ -740,7 +745,8 @@ The per-ship settings OpenVDM doesn't store. Every field is optional;
 
 R2R settings from older site TOMLs (`[vessel] id`, `[cruise] operator_id` and
 `scheduler_id`, `[provenance] distro_type` and `contact_institution_id`,
-`[thresholds] yellow_minimum_percent`) are ignored with a note.
+`[thresholds] yellow_minimum_percent`) are ignored with a note. Any other unknown key is an
+error, as in a config TOML.
 
 ### Reviewing the hook's config
 

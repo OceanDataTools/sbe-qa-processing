@@ -110,3 +110,40 @@ def test_r2r_notebook_defines_names_before_using_them(tmp_path):
     imported = code.index("import load_cruise_config")
     assert code.index("load_cruise_config(CONFIG)") > imported
     assert "CONFIG = Path(" in code and "certificate(result, r2r)" in code
+
+
+def test_core_knows_the_keys_r2r_reads(tmp_path):
+    """config.INTEGRATION_KEYS, written out as core never imports an integration, against what
+    R2R's cruise TOML writer writes: a config with every field set loads back unchanged
+    """
+    from sbe_qa_processing.config import PORT_KEYS, Extent, Thresholds, fields_of
+    from sbe_qa_processing.integrations.r2r.config import Port
+
+    assert list(PORT_KEYS) == fields_of(Port)
+    port = Port("San Diego", "100055", "US", "CA", -117.2, 32.7)
+    config = CruiseConfig(
+        cruise_id="SP2613",
+        cruise_name="Day at sea",
+        cruise_pi="A. Scientist",
+        cruise_location="San Diego",
+        vessel_name="Sproul",
+        contact_institution="Scripps",
+        contact_email="tech@example.org",
+        extent=Extent(-117.4, -117.2, 32.5, 32.8),
+        depart_date=date(2026, 7, 9),
+        arrive_date=date(2026, 7, 9),
+        manifest_path=tmp_path / "md5.txt",
+        thresholds=Thresholds(salinity_range=(0.0, 42.0)),
+        fileset_id="169847",
+        vessel_id="32QU",
+        operator_id="edu.ucsd.sio",
+        scheduler_id="org.unols",
+        depart_port=port,
+        arrive_port=port,
+        distro_type="post-cruise",
+        contact_institution_id="edu.ucsd.sio",
+        yellow_minimum_percent=75.0,
+    )
+    path = tmp_path / "SP2613.toml"
+    path.write_text(config_to_toml(config))
+    assert load_cruise_config(path) == config

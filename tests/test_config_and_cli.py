@@ -1,5 +1,6 @@
 from datetime import date
 
+import pytest
 from conftest import CONFIGS, FIXTURES
 
 from sbe_qa_processing.cli import main
@@ -64,7 +65,9 @@ def test_run_without_a_config(tmp_path, capsys):
     fileset.mkdir()
     output = tmp_path / "output"
     assert main(["run", str(fileset), "-o", str(output)]) == 0
-    assert "MY_CASTS: 0 casts" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "MY_CASTS: 0 casts" in out
+    assert f"Casts warn (0): no .hex, .dat or .hdr files in {fileset}" in out
     assert {p.name for p in output.iterdir()} == {
         "MY_CASTS_qa_report.pdf",
         "MY_CASTS_plots",
@@ -84,3 +87,14 @@ def test_run_with_an_r2r_cruise_toml_writes_only_core_reports(tmp_path):
         "SP2613_plots",
         "SP2613_qa.ipynb",
     }
+
+
+@pytest.mark.parametrize("bag", [False, True])
+def test_a_missing_fileset_directory_is_one_line(bag, tmp_path, capsys):
+    fileset = tmp_path / "MY_CASTS"
+    if bag:  # a bag without its data directory
+        fileset.mkdir()
+        (fileset / "bagit.txt").write_text("BagIt-Version: 0.97\n")
+    assert main(["run", str(fileset), "-o", str(tmp_path / "output")]) == 1
+    missing = f"data directory at {fileset / 'data'}" if bag else f"fileset directory at {fileset}"
+    assert capsys.readouterr().err == f"sbe-qa-processing: no {missing}\n"

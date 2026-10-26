@@ -479,6 +479,9 @@ sbe-qa-processing r2r fetch-fileset [-o OUTPUT_DIR] [--force] CRUISE_ID FILESET_
 Downloads a released R2R CTD fileset (a BagIt bag) into
 `<OUTPUT_DIR>/<CRUISE_ID>_<FILESET_ID>_ctd/`, with R2R's QA report beside it as
 `r2r_qa.2.0.xml` (`r2r_qa.xml` for older filesets).
+When R2R answers with an HTTP error (e.g. 503 while its service is down), the command says
+which download failed in one line and exits 1. If the bag arrived but the QA report didn't, it
+says so: run it again with `--force` to fetch it.
 
 | Argument | Default | Description |
 |---|---|---|

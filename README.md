@@ -607,8 +607,8 @@ from the copy in the cruise's `ovdmConfig.json`.
 3. Write the ship's site config once, for what OpenVDM doesn't store: the reports' extra
    directory, an expected cruise area and QA thresholds, and, for OpenVDM before 2.17, the
    vessel name and the report contact. It prompts for each field and works offline. Fields
-   already in `openvdm.yaml`'s `vessel` block aren't asked for, since the hook uses OpenVDM's
-   values ahead of the site config's:
+   already in `openvdm.yaml`'s `vessel` block are offered as the defaults; the site config's
+   values win when the hook runs, and `openvdm.yaml` fills any it leaves blank:
 
    ```bash
    uv run sbe-qa-processing site-config   # writes configs/site.toml
@@ -724,7 +724,7 @@ are the defaults. It works offline.
 | Argument | Default | Description |
 |---|---|---|
 | `-o`, `--output SITE_TOML` | `configs/site.toml` | The file to write, or `-` for stdout |
-| `--openvdm-config OPENVDM_YAML` | `/opt/openvdm/server/etc/openvdm.yaml`, when it exists | Settings already in its `vessel` block (OpenVDM 2.17) aren't asked for |
+| `--openvdm-config OPENVDM_YAML` | `/opt/openvdm/server/etc/openvdm.yaml`, when it exists | Its `vessel` block's settings (OpenVDM 2.17) are the defaults where the site TOML has none |
 | `--force` | off | Replace an existing site TOML |
 
 ### Site TOML
@@ -734,10 +734,10 @@ The per-ship settings OpenVDM doesn't store. Every field is optional;
 
 | Table | Key | Default | Description |
 |---|---|---|---|
-| `[vessel]` | `name` | blank | The vessel's name, for the report header. From OpenVDM 2.17, `openvdm.yaml`'s `vessel.name` wins |
+| `[vessel]` | `name` | blank | The vessel's name, for the report header. From OpenVDM 2.17, `openvdm.yaml`'s `vessel.name` fills it when blank |
 | `[extent]` | `westernmost`, `easternmost`, `southernmost`, `northernmost` | none | The expected cruise area, used when OpenVDM has no `cruiseExtent` |
 | `[openvdm]` | `output_extra_directory` | `CTD_QA` | The OpenVDM extra directory the reports go into |
-| `[provenance]` | `contact_institution`, `contact_email` | blank | The report contact. From OpenVDM 2.17, `openvdm.yaml`'s `vessel.contact` wins |
+| `[provenance]` | `contact_institution`, `contact_email` | blank | The report contact. From OpenVDM 2.17, `openvdm.yaml`'s `vessel.contact` fills them when blank |
 | `[thresholds]` | as in a [config TOML](#config-toml) | defaults | e.g. for fresh water |
 | `[theme]` | as in a [config TOML](#config-toml) | none | The reports' look; paths relative to the site TOML |
 

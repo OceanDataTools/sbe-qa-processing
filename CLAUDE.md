@@ -27,12 +27,10 @@ Use uv. Run from the repo root.
 - Lint and format: `uv run ruff check .` and `uv run ruff format --check .` (line length 99).
 - CI (`.github/workflows/ci.yml`) runs on PRs and pushes to `main`:
   - `lint`: ruff;
-  - `test`: Linux on Python 3.11–3.14, plus macOS and Windows on 3.13, without `data/`, so the R2R comparisons skip;
-  - `r2r`: the full suite with the three validation filesets, cached under a fixed key and fetched from R2R only on a cache miss. Bump the key's `-vN` suffix to refetch them, and add a new validation fileset to both the key and the fetch loop.
+  - `test`: the full suite on Linux with Python 3.11–3.14, plus macOS and Windows on 3.13. Nothing is fetched from R2R: the tests unpack the validation filesets committed in `tests/data/`, so every R2R comparison runs everywhere.
 
   Everything uses `uv sync --locked`, so commit `uv.lock` with `pyproject.toml` changes.
-- Fetch the R2R validation filesets into `data/`. Without them, `test_r2r_comparison.py` and parts of `test_openvdm.py` skip, and the skip message names the command:
-  `uv run sbe-qa-processing r2r fetch-fileset SP2613 169847`, plus the same for `RR2605 170644` and `BH18-18 132368`.
+- The R2R validation filesets (SP2613 169847, RR2605 170644, BH18-18 132368) are committed as `tests/data/<CRUISE>_<FILESET>_ctd.tar.xz`, and `tests/conftest.py` unpacks each into `data/` when it isn't there; a fetched copy stays. To add one, fetch it (`uv run sbe-qa-processing r2r fetch-fileset CRUISE_ID FILESET_ID`) and pack it with `uv run python tests/data/pack_fileset.py data/<CRUISE>_<FILESET>_ctd`. A test that needs a fileset that's neither committed nor fetched skips, and the skip message names the fetch command.
 - Natural Earth map data for offline use: `uv run sbe-qa-processing fetch-map-data`. The tests monkeypatch the map layers, so they don't need it.
 - Run on a fileset: `uv run sbe-qa-processing run data/SP2613_169847_ctd [-c configs/SP2613.toml] -o output/SP2613 [--force] [--execute-notebook]`. Without `-c`, the reports are titled after the fileset directory.
 - Run with R2R's tests and XML: `uv run sbe-qa-processing r2r run configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--force] [--execute-notebook]`
@@ -41,7 +39,7 @@ Use uv. Run from the repo root.
 - Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [-o configs/site.toml] [--force]`
 - Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL --site-config site.toml [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`.
 
-`data/` (downloaded filesets) and `output/` (generated reports) are gitignored. `configs/` holds the three validation cruises' R2R cruise TOMLs, `site.example.toml` and `theme.example.toml`.
+`data/` (fetched or unpacked filesets) and `output/` (generated reports) are gitignored at the repo root, so `tests/data/` is tracked. `configs/` holds the three validation cruises' R2R cruise TOMLs, `site.example.toml` and `theme.example.toml`.
 
 ## seabirdscientific dependency
 

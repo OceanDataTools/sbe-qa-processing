@@ -25,6 +25,7 @@ from pathlib import Path
 
 from sbe_qa_processing.config import ConfigError
 from sbe_qa_processing.filenames import report_stem
+from sbe_qa_processing.fileset import FilesetError
 
 # Stdlib only: pyyaml (the openvdm extra) is imported when openvdm.yaml is read
 from sbe_qa_processing.integrations.openvdm.hook import DEFAULT_OPENVDM_CONFIG, OpenVDMError
@@ -35,7 +36,7 @@ from sbe_qa_processing.theme import ThemeError
 logger = logging.getLogger(__name__)
 STDOUT = "-"
 # Errors that are a one-line message, not a traceback: the user can act on them
-EXPECTED_ERRORS = (NetworkError, ConfigError, R2RError, OpenVDMError, ThemeError)
+EXPECTED_ERRORS = (NetworkError, ConfigError, R2RError, OpenVDMError, ThemeError, FilesetError)
 LOG_LEVELS = (logging.WARNING, logging.INFO, logging.DEBUG)  # by the number of -v
 
 

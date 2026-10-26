@@ -12,7 +12,7 @@ small config, and it checks the files and the data and writes:
 
 | Output | Contents |
 |---|---|
-| `<TITLE>_qa_report.pdf` | A cast map with coastlines and a world inset; the fileset's integrity checks; and per cast: profiles, dual-sensor differences, TS diagram, pressure record, integrity and science checks and sensor loadout |
+| `<TITLE>_qa_report.pdf` | Under the title, the checks in a line on the worst status's color (which integrity checks didn't pass, and which casts warned or failed the science checks); a cast map with coastlines and a world inset; the fileset's integrity checks; and per cast: profiles, dual-sensor differences, TS diagram, pressure record, integrity and science checks and sensor loadout |
 | `<TITLE>_plots/*.svg` | Every report figure as SVG: the cast map, and each cast's profiles, TS diagram and pressure record. The PDF embeds these same SVGs as vector graphics |
 | `<TITLE>_qa.ipynb` | A notebook that re-runs the whole assessment step by step, to inspect or change it (see [Opening the notebook](#opening-the-notebook)) |
 

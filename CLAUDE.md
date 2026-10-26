@@ -22,7 +22,7 @@ The R2R XML is a parity target. `tests/test_r2r_comparison.py` requires its `cer
 Use uv. Run from the repo root.
 
 - Install: `uv sync`. Use `uv sync --locked` to check the lock. The OpenVDM hook needs the `openvdm` extra (pyyaml): `uv sync --extra openvdm`. The dev group has pyyaml, so the tests don't.
-- All tests: `uv run pytest`. This takes about 80 s with the R2R filesets present.
+- All tests: `uv run pytest`. This takes about 90 s.
 - One test: `uv run pytest tests/test_status.py::test_name`
 - Lint and format: `uv run ruff check .` and `uv run ruff format --check .` (line length 99).
 - CI (`.github/workflows/ci.yml`) runs on PRs and pushes to `main`:
@@ -69,7 +69,7 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
    - `pdf_report.py` uses ReportLab and embeds the SVGs as vectors via svglib. `layout(theme)` makes the theme concrete (page and frame sizes, registered fonts, paragraph styles) as a `Layout` passed to every page helper; an integration's `front` pages are a function of the same `Layout`.
    - `plots.py` has one matplotlib Figure per function, shared by the PDF and the notebook. Each takes a `theme`, renders inside `plots.themed(theme)` (fonts) and scales explicit font sizes with `_pt`.
    - `maps.py` loads Natural Earth via cartopy, clipped to the view, and degrades to no coastlines when the data can't load.
-   - `notebook.py` writes a notebook (nbformat) whose cells import this package.
+   - `notebook.py` writes a notebook (nbformat) from `notebook_template.py`, whose cells import this package; an integration adds cells through `NotebookExtras`.
 9. **`integrations/r2r/`** is R2R:
    - `config.py`: `CruiseConfig(QAConfig)` (R2R's IDs, ports, provenance and `yellow_minimum_percent`, with the cruise ID and dates required), `load_cruise_config` and `config_to_toml`;
    - `catalog.py`: configs from R2R's catalog API and QA XML. R2R's XML identifies the vessel by its ICES code, which the API calls `vessel_ices_code`; the API's own `vessel_id` field holds the vessel's name;
@@ -93,7 +93,7 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
 - Python ≥3.11 with modern syntax. Prefer dataclasses. Write short docstrings without `:param:` boilerplate, and put units in brackets in comments (`# [dbar]`).
 - Classes people inspect (results, casts, configs, checks) inherit `readable.Readable` and define a short `__str__`; `Readable` makes IPython and Jupyter show that text for a bare expression, and `repr()` stays the dataclass's. Configs print as their TOML. Plumbing classes (`Layout`, `NotebookExtras`, `Theme`, ...) don't need it. `tests/test_readable.py` checks each one.
 - The README documents every command's arguments and defaults ("Command line", "R2R commands", "OpenVDM commands") and every config, R2R cruise and site TOML key ("Config TOML", "R2R cruise TOML", "Site TOML"). Update those tables when you add, rename or change a CLI argument or TOML key.
-- Renaming a public function or module changes the generated notebook too: `notebook.py` and `integrations/r2r/reports.notebook_extras` write import lines and calls as strings. No test executes the notebook, so check by hand with `run ... --execute-notebook` and `r2r run ... --execute-notebook` after such changes.
+- The notebook's cells are `notebook_template.py`, a Python file Ruff checks (jupytext percent format, `# @name` markers that `notebook.build_notebook` fills; see its docstring), so renaming a function it calls fails `ruff check`. R2R's imports and cells are still strings in `integrations/r2r/reports.notebook_extras` and `certificate.NOTEBOOK_CELLS`; `tests/test_notebook.py` executes R2R's notebook on SP2613, which runs every core and R2R cell, and `test_review_fixes.py` executes the core one for an empty fileset.
 - Report styling comes from the theme: no colors, fonts or text sizes written into the writers or the plots. The default theme must reproduce the existing reports: SVGs are deterministic (no date, fixed `svg.hashsalt`), so compare their checksums before and after a change, and the PDFs' text and rendered pages (only the "Generated" timestamp differs).
 - The seawater deprecation warning from seabirdscientific's EOS-80 import is filtered in `cli.py`, `tests/conftest.py` and the notebook's setup cell.
 - An `Extent` with westernmost > easternmost crosses the antimeridian, as in R2R's reports and OpenVDM's `cruiseExtent`. Test positions with `Extent.contains`, never by comparing edges, and draw anything spanning the box relative to a central longitude, as `plots.cast_map` does.

@@ -23,6 +23,10 @@ Two optional integrations build on this:
   XML, identical to R2R's own reports.
 - **[OpenVDM](#openvdm)** runs the QA from a post-transfer hook on each cruise's CTD files.
 
+[COOKBOOK.md](COOKBOOK.md) works through both, end to end, with real output: a directory of
+Seasave files with and without a config, and an R2R fileset from download to comparing ratings
+with R2R's report.
+
 Raw `.hex` data is read and converted with
 [seabirdscientific](https://github.com/Sea-BirdScientific/seabirdscientific) 3.0.0 or later
 (see [seabirdscientific version](#seabirdscientific-version)).

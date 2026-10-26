@@ -18,7 +18,13 @@ import numpy as np
 from sbe_qa_processing.bottles import parse_bottle_log
 from sbe_qa_processing.cast import CastData
 from sbe_qa_processing.config import Extent, QAConfig
-from sbe_qa_processing.fileset import Cast, Fileset, md5sum
+from sbe_qa_processing.fileset import (
+    HEADER_SUFFIX,
+    RAW_DATA_SUFFIXES,
+    Cast,
+    Fileset,
+    md5sum,
+)
 from sbe_qa_processing.readable import Readable, block
 from sbe_qa_processing.science import FAIL, INFO, NA, PASS, WARN, CheckResult
 
@@ -374,12 +380,20 @@ def _coverage(casts: list[CastData], now: datetime) -> list[CheckResult]:
     ]
 
 
+def _cast_count(fileset: Fileset, casts: list[CastData]) -> CheckResult:
+    """How many casts; none warns, as the directory is most likely the wrong one"""
+    if casts:
+        return CheckResult("Casts", INFO, str(len(casts)))
+    *others, last = (*RAW_DATA_SUFFIXES, HEADER_SUFFIX)
+    suffixes = f"{', '.join(others)} or {last}"
+    return CheckResult("Casts", WARN, "0", detail=f"no {suffixes} files in {fileset.data_dir}")
+
+
 def _infos(casts: list[CastData]) -> list[CheckResult]:
     deck_tests = [d.name for d in casts if d.cast.is_deck_test]
     with_bottles = [d.name for d in casts if d.cast.raw is not None and bottles_fired(d.cast)]
     models = sorted({d.config.name for d in casts if d.config is not None})
     return [
-        CheckResult("Casts", INFO, str(len(casts))),
         CheckResult("Deck-test casts", INFO, str(len(deck_tests)), detail=", ".join(deck_tests)),
         CheckResult(
             "Casts with bottles fired",
@@ -408,6 +422,7 @@ def run_integrity_checks(
             *summaries,
             order_check(casts),
             *_coverage(casts, now),
+            _cast_count(fileset, casts),
             *_infos(casts),
         ],
         casts=per_cast,

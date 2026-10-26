@@ -183,8 +183,8 @@ Every command follows these conventions:
 - Existing outputs, reports included, aren't overwritten without `--force`. The exception is
   the `openvdm` hook, which replaces its reports after each transfer.
 - A command exits 0 on success and 1 when it refuses (e.g. existing outputs) or fails with an
-  expected error (a server that can't be reached, a bad theme, R2R or OpenVDM not having what was
-  asked for), with a one-line message on stderr, e.g.
+  expected error (a server that can't be reached, a fileset directory that isn't there, a bad
+  theme, R2R or OpenVDM not having what was asked for), with a one-line message on stderr, e.g.
   `sbe-qa-processing: couldn't reach R2R (service.rvdata.us): ... Check the network connection and try again`.
 - `-v`/`--verbose`, before or after the command, logs more: `-v` is INFO and `-vv` is DEBUG
   (default WARNING). `-vv` also prints the traceback of an expected error, e.g.
@@ -370,6 +370,8 @@ included, and summarized for the fileset:
 - Header temperature and conductivity serial numbers match the `.XMLCON`.
 - Position inside the config's expected area and time inside its dates (n/a without them,
   and for deck tests).
+- A fileset with no casts (no `.hex`, `.dat` or `.hdr` files) warns: most likely the wrong
+  directory.
 - Informational: the range of cast times and positions, cast count, deck tests, casts with
   bottles fired, instrument model.
 

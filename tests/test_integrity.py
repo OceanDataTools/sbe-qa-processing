@@ -24,7 +24,7 @@ from sbe_qa_processing.integrity import (
     summarize,
     time_check,
 )
-from sbe_qa_processing.science import FAIL, NA, PASS, WARN, CheckResult
+from sbe_qa_processing.science import FAIL, INFO, NA, PASS, WARN, CheckResult
 
 NOW = datetime(2026, 10, 12, tzinfo=UTC)
 FILE = Path("x")  # never opened
@@ -271,3 +271,16 @@ def test_coverage_without_a_config(tmp_path):
     assert (
         by_name["Cast time inside the expected dates"].value == "no expected dates in the config"
     )
+
+
+def test_no_casts_warns(tmp_path):
+    result = run_integrity_checks(Fileset(tmp_path, tmp_path, []), [], QAConfig(), NOW)
+    casts = next(c for c in result.fileset if c.name == "Casts")
+    assert (casts.status, casts.value, casts.detail) == (
+        WARN,
+        "0",
+        f"no .hex, .dat or .hdr files in {tmp_path}",
+    )
+    one = cast("Station1", header=at("Jul 09 2026 10:00:00"))
+    result = run_integrity_checks(Fileset(tmp_path, tmp_path, [one.cast]), [one], config(), NOW)
+    assert next(c for c in result.fileset if c.name == "Casts").status == INFO

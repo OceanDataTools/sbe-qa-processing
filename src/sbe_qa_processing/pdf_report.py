@@ -321,8 +321,27 @@ def _title(lay: Layout, result: QAResult) -> list[Flowable]:
             lay.small,
         ),
         Paragraph(f"Source: {escape(result.fileset.root)}", lay.small),
+        Spacer(1, 6),
+        _verdict(lay, result),
         Spacer(1, 10),
     ]
+
+
+def _verdict(lay: Layout, result: QAResult) -> Table:
+    """The checks in a line, on the worst status's color: whether anything is wrong, without
+    reading the checks tables
+    """
+    status, text = result.verdict
+    return Table(
+        [[Paragraph(escape(text), lay.cell_bold)]],
+        colWidths=[lay.frame_width],
+        style=[
+            ("BACKGROUND", (0, 0), (-1, -1), _status_color(lay, status)),
+            ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor(lay.colors.table_grid)),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ],
+    )
 
 
 def _checks_table(lay: Layout, checks) -> Table:

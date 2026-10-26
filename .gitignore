@@ -7,8 +7,8 @@ __pycache__/
 dist/
 build/
 *.egg-info/
-# Downloaded R2R filesets (fetch with `sbe-qa-processing fetch-fileset`)
-data/
+# R2R filesets, fetched with `sbe-qa-processing r2r fetch-fileset` or unpacked from tests/data/
+/data/
 # Generated reports
-output/
+/output/
 .DS_Store

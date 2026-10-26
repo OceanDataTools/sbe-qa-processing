@@ -100,19 +100,16 @@ needs. `uv sync --no-dev` leaves those out. `uv run` runs a command in that envi
 command itself is `.venv/bin/sbe-qa-processing` (`.venv\Scripts\sbe-qa-processing.exe` on
 Windows), which works without uv on the PATH.
 
-To check the install against R2R's own reports, fetch the validation filesets and run the
-tests:
+To check the install against R2R's own reports, run the tests:
 
 ```bash
-uv run sbe-qa-processing r2r fetch-fileset SP2613 169847
-uv run sbe-qa-processing r2r fetch-fileset RR2605 170644
-uv run sbe-qa-processing r2r fetch-fileset BH18-18 132368
 uv run pytest
 ```
 
-CI (`.github/workflows/ci.yml`) runs ruff and the tests on every PR and push to `main`: on
-Linux with Python 3.11–3.14 and on macOS and Windows, then once more with these filesets, which
-it caches so R2R only needs to be reachable the first time.
+The three R2R validation filesets (SP2613, RR2605 and BH18-18, about 3 MB compressed) are
+committed in `tests/data/`, and the tests unpack them into `data/`, so nothing is fetched from
+R2R. CI (`.github/workflows/ci.yml`) runs ruff and the tests on every PR and push to `main`, on
+Linux with Python 3.11–3.14 and on macOS and Windows.
 
 To update, pull and sync again: `git pull && uv sync` (with the same options as before).
 
@@ -579,13 +576,11 @@ reports:
 | RR2605 / 170644 (Revelle) | Y (one cast outside the extent) | Y, certificate identical |
 | BH18-18 / 132368 (Blue Heron) | no QA 2.0 report | R presence test (a cast with only a `.hdr`), SBE 21 configuration flagged |
 
-Fetch them with:
+They're committed in `tests/data/`, and `uv run pytest` unpacks them into `data/` (e.g.
+`data/SP2613_169847_ctd/`). To fetch one from R2R instead, e.g. to check it hasn't changed:
 
 ```bash
-uv run sbe-qa-processing r2r fetch-fileset SP2613 169847   # into data/SP2613_169847_ctd/
-uv run sbe-qa-processing r2r fetch-fileset RR2605 170644
-uv run sbe-qa-processing r2r fetch-fileset BH18-18 132368
-uv run pytest
+uv run sbe-qa-processing r2r fetch-fileset SP2613 169847 --force   # into data/SP2613_169847_ctd/
 ```
 
 R2R doesn't document every rule; the ones inferred here (deck tests excluded from NAV tests, a

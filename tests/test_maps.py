@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 
 from sbe_qa_processing import maps, plots
 from sbe_qa_processing.cast import CastData
@@ -111,4 +112,50 @@ def test_map_across_the_antimeridian(monkeypatch):
     # Casts on both sides of 180 are inside the extent; FAR is outside
     colors = [tuple(c.get_facecolor()[0]) for c in axis.collections]
     assert len(set(colors)) == 2 and colors[0] == colors[1] != colors[2]
+    plt.close(figure)
+
+
+def test_tests_run_without_map_data():
+    # conftest sets SBE_QA_NO_MAP_DATA for the session, so nothing is downloaded
+    assert maps.clipped_geometries("physical", "land", "10m", (-118, -117, 32, 33)) is None
+    assert maps.world_geometries("physical", "land") is None
+    figure = plots.cast_map(casts(), config())
+    assert "coastline data unavailable" in text_of(figure)
+    plt.close(figure)
+
+
+def test_cached(tmp_path, monkeypatch):
+    monkeypatch.setitem(maps.cartopy.config, "data_dir", str(tmp_path))
+    assert not maps.cached()
+    for scale, category, name in maps._layers():
+        shapefile = tmp_path / "shapefiles" / "natural_earth" / category / f"ne_{scale}_{name}.shp"
+        shapefile.parent.mkdir(parents=True, exist_ok=True)
+        shapefile.touch()
+    assert maps.cached()
+
+
+def test_download_notices_are_logged_not_warned(monkeypatch, caplog):
+    import warnings
+
+    from cartopy.io import DownloadWarning
+
+    class Feature:
+        def geometries(self):
+            warnings.warn("Downloading: ne_110m_land.zip", DownloadWarning, stacklevel=1)
+            return []
+
+    monkeypatch.setattr(maps, "_feature", lambda *a: Feature())
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with caplog.at_level("INFO", logger="sbe_qa_processing.maps"):
+            assert maps.world_geometries("physical", "land") == []
+    assert "Downloading: ne_110m_land.zip" in caplog.text
+
+
+@pytest.mark.map_data
+def test_map_with_coastline_data():
+    land = maps.clipped_geometries("physical", "land", "10m", (-117.38, -117.22, 32.59, 32.71))
+    assert land  # San Diego
+    figure = plots.cast_map(casts(), config())
+    assert "coastline data unavailable" not in text_of(figure)
     plt.close(figure)

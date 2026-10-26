@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from sbe_qa_processing import maps
+
 os.environ.setdefault("MPLBACKEND", "Agg")
 warnings.filterwarnings("ignore", "The seawater library is deprecated")
 
@@ -20,3 +22,23 @@ def r2r_fileset(name: str) -> Path:
         cruise, fileset, _ = name.split("_")
         pytest.skip(f"run: uv run sbe-qa-processing r2r fetch-fileset {cruise} {fileset}")
     return path
+
+
+@pytest.fixture(autouse=True, scope="session")
+def no_map_data():
+    """No test downloads Natural Earth, or depends on whether it's cached: the whole session
+    runs without map data (maps without coastlines), set before any fixture and through the
+    environment, so a notebook's kernel has none either
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv(maps.NO_MAP_DATA, "1")
+        yield
+
+
+@pytest.fixture(autouse=True)
+def map_data(request, monkeypatch):
+    """A test marked `map_data` uses Natural Earth when it's already cached, never downloading"""
+    if request.node.get_closest_marker("map_data"):
+        if not maps.cached():
+            pytest.skip("run: uv run sbe-qa-processing fetch-map-data")
+        monkeypatch.delenv(maps.NO_MAP_DATA)

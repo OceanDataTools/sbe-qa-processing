@@ -159,3 +159,79 @@ def test_map_with_coastline_data():
     figure = plots.cast_map(casts(), config())
     assert "coastline data unavailable" not in text_of(figure)
     plt.close(figure)
+
+
+def casts_at(positions):
+    """Casts at (lat, lon) in decimal degrees"""
+
+    def nmea(value, positive, negative):
+        degrees, minutes = divmod(abs(value) * 60, 60)
+        return f"{int(degrees)} {minutes:.4f} {positive if value >= 0 else negative}"
+
+    return [
+        CastData(
+            cast=Cast(f"STATION{i}"),
+            header=Header(
+                values={
+                    "nmea latitude": nmea(lat, "N", "S"),
+                    "nmea longitude": nmea(lon, "E", "W"),
+                }
+            ),
+        )
+        for i, (lat, lon) in enumerate(positions)
+    ]
+
+
+def in_axes(axis, positions):
+    """(lat, lon) positions in the map's axes coordinates"""
+    import cartopy.crs as ccrs
+
+    lats, lons = np.array(positions, dtype=float).T
+    projected = axis.projection.transform_points(ccrs.PlateCarree(), lons, lats)
+    return axis.transLimits.transform(projected[:, :2])
+
+
+def axes_box(axis, artist):
+    """An artist's drawn box in the map's axes coordinates, (x0, y0, x1, y1)"""
+    box = artist.get_window_extent().transformed(axis.transAxes.inverted())
+    return box.x0, box.y0, box.x1, box.y1
+
+
+def covered(box, points):
+    x0, y0, x1, y1 = box
+    return [(x, y) for x, y in points if x0 <= x <= x1 and y0 <= y <= y1]
+
+
+def test_legend_and_inset_cover_no_cast():
+    # A cast in every corner of the extent, where the inset and the legend used to go
+    extent = config().extent
+    corners = [
+        (lat, lon)
+        for lat in (extent.southernmost, extent.northernmost)
+        for lon in (extent.westernmost, extent.easternmost)
+    ]
+    figure = plots.cast_map(casts_at(corners), config())
+    figure.canvas.draw()
+    axis = figure.axes[0]
+    points = in_axes(axis, corners)
+    (inset,) = axis.child_axes
+    assert not covered(axes_box(axis, inset), points)
+    legend = axis.get_legend()
+    assert legend is not None and not covered(axes_box(axis, legend), points)
+    plt.close(figure)
+
+
+@pytest.mark.filterwarnings("error")
+def test_a_map_full_of_casts_has_no_inset_and_its_legend_covers_none():
+    # The view's margin is clear of casts, so the legend fits there; the inset doesn't
+    extent = config().extent
+    lats = np.linspace(extent.southernmost - 0.05, extent.northernmost + 0.05, 9)
+    lons = np.linspace(extent.westernmost - 0.05, extent.easternmost + 0.05, 9)
+    positions = [(lat, lon) for lat in lats for lon in lons]
+    figure = plots.cast_map(casts_at(positions), config())
+    figure.canvas.draw()
+    axis = figure.axes[0]
+    assert not axis.child_axes  # no clear place for the inset
+    legend = axis.get_legend()
+    assert legend is not None and not covered(axes_box(axis, legend), in_axes(axis, positions))
+    plt.close(figure)

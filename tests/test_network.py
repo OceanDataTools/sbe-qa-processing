@@ -1,7 +1,10 @@
-"""Servers that can't be reached are a one-line error, and -v/--verbose (issue 33)."""
+"""Servers that can't be reached and R2R's HTTP errors are a one-line error, and -v/--verbose
+(issue 33)."""
 
+import io
 import logging
 import socket
+import tarfile
 import urllib.error
 
 import pytest
@@ -9,7 +12,7 @@ import pytest
 from sbe_qa_processing import maps
 from sbe_qa_processing.cli import main
 from sbe_qa_processing.integrations.openvdm import hook
-from sbe_qa_processing.integrations.r2r import catalog
+from sbe_qa_processing.integrations.r2r import catalog, download
 from sbe_qa_processing.network import NetworkError, reaching
 
 NO_DNS = urllib.error.URLError(socket.gaierror(8, "nodename nor servname provided, or not known"))
@@ -125,3 +128,81 @@ def test_verbose_sets_the_log_level(flags, level, monkeypatch):
     logging.getLogger("sbe_qa_processing").setLevel(logging.NOTSET)
     assert main([*flags, "fetch-map-data"]) == 0
     assert logging.getLogger("sbe_qa_processing").level == level
+
+
+def http_error(url, code, reason):
+    return urllib.error.HTTPError(url, code, reason, {}, None)
+
+
+def test_r2r_http_errors_are_one_line(monkeypatch, capsys):
+    def unavailable(url, *args, **kwargs):
+        raise http_error(url, 503, "Service Unavailable")
+
+    monkeypatch.setattr(catalog.urllib.request, "urlopen", unavailable)
+    assert main(["r2r", "config-from-catalog", "SP2613", "169847", "-o", "-"]) == 1
+    assert capsys.readouterr().err == (
+        "sbe-qa-processing: R2R's catalog (service.rvdata.us) answered 503 Service Unavailable; "
+        "try again later\n"
+    )
+
+
+class FakeOpener:
+    """Serves the bag, then answers R2R's QA report URLs with `qa` (bytes or an HTTP status)"""
+
+    def __init__(self, qa):
+        self.qa = qa
+
+    def open(self, url, timeout=None):
+        if "/qa/" not in url:
+            return FakeResponse(url, bag())
+        if isinstance(self.qa, int):
+            raise http_error(url, self.qa, {404: "Not Found", 503: "Service Unavailable"}[self.qa])
+        return FakeResponse(url, self.qa)
+
+
+class FakeResponse(io.BytesIO):
+    def __init__(self, url, body):
+        super().__init__(body)
+        self.url = url
+
+    def geturl(self):
+        return self.url
+
+
+def bag() -> bytes:
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        info = tarfile.TarInfo("bagit.txt")
+        info.size = 4
+        tar.addfile(info, io.BytesIO(b"bag\n"))
+    return archive.getvalue()
+
+
+@pytest.fixture
+def released(monkeypatch):
+    record = {"fileset_id": 169847, "download_url": "https://service.rvdata.us/bag"}
+    monkeypatch.setattr(download, "fetch_r2r_records", lambda *args: [record])
+
+
+def test_r2r_qa_report_http_error_after_the_bag(released, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(download, "build_opener", lambda: FakeOpener(503))
+    assert main(["r2r", "fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 1
+    destination = tmp_path / "SP2613_169847_ctd"
+    assert (destination / "bagit.txt").exists()
+    assert capsys.readouterr().err == (
+        f"sbe-qa-processing: 1 raw files are in {destination}, but R2R's QA report isn't: "
+        "R2R's QA report (service.rvdata.us) answered 503 Service Unavailable; try again later. "
+        "Run again with --force to fetch it\n"
+    )
+
+
+def test_r2r_qa_report_not_found_is_no_report(released, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(download, "build_opener", lambda: FakeOpener(404))
+    assert main(["r2r", "fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 0
+    assert capsys.readouterr().err == "R2R has no QA report for this fileset\n"
+
+
+def test_r2r_qa_report_downloaded(released, tmp_path, monkeypatch):
+    monkeypatch.setattr(download, "build_opener", lambda: FakeOpener(b"<?xml version='1.0'?>"))
+    assert main(["r2r", "fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 0
+    assert (tmp_path / "SP2613_169847_ctd" / "r2r_qa.2.0.xml").exists()

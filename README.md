@@ -180,8 +180,9 @@ Every command follows these conventions:
 - Existing outputs, reports included, aren't overwritten without `--force`. The exception is
   the `openvdm` hook, which replaces its reports after each transfer.
 - A command exits 0 on success and 1 when it refuses (e.g. existing outputs) or fails with an
-  expected error (a server that can't be reached, a bad theme, R2R or OpenVDM not having what was
-  asked for), with a one-line message on stderr, e.g.
+  expected error (a server that can't be reached, a fileset directory that isn't there, a bad
+  config or theme, R2R or OpenVDM not having what was asked for), with a one-line message on
+  stderr, e.g.
   `sbe-qa-processing: couldn't reach R2R (service.rvdata.us): ... Check the network connection and try again`.
 - `-v`/`--verbose`, before or after the command, logs more: `-v` is INFO and `-vv` is DEBUG
   (default WARNING). `-vv` also prints the traceback of an expected error, e.g.
@@ -220,6 +221,9 @@ sbe-qa-processing fetch-map-data
 Downloads the Natural Earth layers the cast map uses (1:10m land, lakes and coastlines, and the
 1:110m world for the inset, about 27 MB) into cartopy's data directory, so the maps have
 coastlines offline, e.g. at sea. It takes no arguments.
+
+With the environment variable `SBE_QA_NO_MAP_DATA` set, no layer is loaded or downloaded, and
+the maps are drawn without coastlines. The tests set it.
 
 ### Config TOML
 
@@ -286,9 +290,13 @@ page_size = "A4"
 | `max_calibration_age_days` | `365` [days] | Sensors calibrated longer ago than this at the time of the cast warn |
 
 Parsing rules:
-- An unknown key in `[thresholds]` or `[theme]` is an error, so a typo doesn't go unnoticed.
-- Other tables and keys are ignored, so an [R2R cruise TOML](#r2r-cruise-toml) or an OpenVDM
-  snapshot works as a config too.
+- An unknown key is an error, so a typo doesn't go unnoticed. The message names every one and
+  where it belongs, e.g. `[cruise] depart_dat: did you mean depart_date?` or
+  `extent (top level): did you mean [cruise.extent]?`.
+- So is a value of the wrong shape (a value where a table belongs, or the reverse), a date
+  that isn't a TOML date, or a `[cruise.extent]` without all four edges.
+- The keys of an [R2R cruise TOML](#r2r-cruise-toml) are accepted and left to the `r2r`
+  commands, so an R2R cruise TOML or an OpenVDM snapshot works as a config too.
 - Relative paths (`[fileset] manifest`, theme fonts and logo) are relative to the TOML file.
 
 ### Themes
@@ -367,6 +375,8 @@ included, and summarized for the fileset:
 - Header temperature and conductivity serial numbers match the `.XMLCON`.
 - Position inside the config's expected area and time inside its dates (n/a without them,
   and for deck tests).
+- A fileset with no casts (no `.hex`, `.dat` or `.hdr` files) warns: most likely the wrong
+  directory.
 - Informational: the range of cast times and positions, cast count, deck tests, casts with
   bottles fired, instrument model.
 
@@ -474,6 +484,9 @@ sbe-qa-processing r2r fetch-fileset [-o OUTPUT_DIR] [--force] CRUISE_ID FILESET_
 Downloads a released R2R CTD fileset (a BagIt bag) into
 `<OUTPUT_DIR>/<CRUISE_ID>_<FILESET_ID>_ctd/`, with R2R's QA report beside it as
 `r2r_qa.2.0.xml` (`r2r_qa.xml` for older filesets).
+When R2R answers with an HTTP error (e.g. 503 while its service is down), the command says
+which download failed in one line and exits 1. If the bag arrived but the QA report didn't, it
+says so: run it again with `--force` to fetch it.
 
 | Argument | Default | Description |
 |---|---|---|
@@ -730,7 +743,8 @@ The per-ship settings OpenVDM doesn't store. Every field is optional;
 
 R2R settings from older site TOMLs (`[vessel] id`, `[cruise] operator_id` and
 `scheduler_id`, `[provenance] distro_type` and `contact_institution_id`,
-`[thresholds] yellow_minimum_percent`) are ignored with a note.
+`[thresholds] yellow_minimum_percent`) are ignored with a note. Any other unknown key is an
+error, as in a config TOML.
 
 ### Reviewing the hook's config
 

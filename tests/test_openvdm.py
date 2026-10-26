@@ -398,7 +398,8 @@ def test_hook_writes_reports_into_the_extra_directory(
     # With --site-root, OpenVDM's MD5 script is looked for in the default install
     install = openvdm_install(tmp_path / "openvdm")
     monkeypatch.setattr(
-        "sbe_qa_processing.cli.DEFAULT_OPENVDM_CONFIG", install / "server/etc/openvdm.yaml"
+        "sbe_qa_processing.integrations.openvdm.cli.DEFAULT_OPENVDM_CONFIG",
+        install / "server/etc/openvdm.yaml",
     )
     md5_update = FakeRun(1, "Unable to queue the MD5 summary update: no Gearman")
     monkeypatch.setattr(openvdm.subprocess, "run", md5_update)

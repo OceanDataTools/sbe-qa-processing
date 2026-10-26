@@ -1,6 +1,7 @@
 """Cruise configs from R2R's catalog API and from R2R's QA 2.0 reports."""
 
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -16,7 +17,22 @@ R2R_API_TIMEOUT = 60  # [s]
 
 
 class R2RError(LookupError):
-    """R2R's catalog doesn't have what was asked for"""
+    """R2R's catalog doesn't have what was asked for, or R2R answered with an HTTP error.
+    `status` is that error's HTTP status, else None
+    """
+
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
+
+
+def http_error(error: urllib.error.HTTPError, what: str, url: str) -> R2RError:
+    """An HTTP error from R2R as a one-line R2RError naming what was being fetched"""
+    host = urllib.parse.urlsplit(url).hostname or url
+    retry = "; try again later" if error.code >= 500 else ""
+    return R2RError(
+        f"{what} ({host}) answered {error.code} {error.reason}{retry}", status=error.code
+    )
 
 
 def fetch_r2r_records(endpoint: str, cruise_id: str) -> list[dict]:
@@ -24,8 +40,14 @@ def fetch_r2r_records(endpoint: str, cruise_id: str) -> list[dict]:
     answers "not found" with a 204 status in the body and no data
     """
     url = f"{R2R_API}/{endpoint}/?cruise_id={urllib.parse.quote(cruise_id)}"
-    with reaching("R2R", url), urllib.request.urlopen(url, timeout=R2R_API_TIMEOUT) as response:
-        body = response.read()
+    try:
+        with (
+            reaching("R2R", url),
+            urllib.request.urlopen(url, timeout=R2R_API_TIMEOUT) as response,
+        ):
+            body = response.read()
+    except urllib.error.HTTPError as error:
+        raise http_error(error, "R2R's catalog", url) from error
     return json.loads(body).get("data") or []
 
 

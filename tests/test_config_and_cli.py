@@ -1,9 +1,10 @@
 from datetime import date
 
+import pytest
 from conftest import CONFIGS, FIXTURES
 
 from sbe_qa_processing.cli import main
-from sbe_qa_processing.config import QAConfig, Thresholds, load_config
+from sbe_qa_processing.config import ConfigError, QAConfig, Thresholds, load_config
 from sbe_qa_processing.qa import resolve_config
 
 QA_XML = str(FIXTURES / "SP2613_169847_r2r_qa.2.0.xml")
@@ -40,7 +41,7 @@ def test_partial_configs_load(tmp_path):
     assert (config.depart_date, config.arrive_date) == (date(2026, 7, 9), None)
 
 
-def test_core_config_ignores_r2r_fields():
+def test_core_config_accepts_r2r_fields():
     config = load_config(CONFIGS / "SP2613.toml")
     assert type(config) is QAConfig
     assert (config.identifier, config.depart_date) == ("SP2613", date(2026, 7, 9))
@@ -64,7 +65,9 @@ def test_run_without_a_config(tmp_path, capsys):
     fileset.mkdir()
     output = tmp_path / "output"
     assert main(["run", str(fileset), "-o", str(output)]) == 0
-    assert "MY_CASTS: 0 casts" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "MY_CASTS: 0 casts" in out
+    assert f"Casts warn (0): no .hex, .dat or .hdr files in {fileset}" in out
     assert {p.name for p in output.iterdir()} == {
         "MY_CASTS_qa_report.pdf",
         "MY_CASTS_plots",
@@ -84,3 +87,85 @@ def test_run_with_an_r2r_cruise_toml_writes_only_core_reports(tmp_path):
         "SP2613_plots",
         "SP2613_qa.ipynb",
     }
+
+
+def test_unknown_keys_say_where_they_belong(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "depart_date = 2026-07-09\n"
+        "[cruise]\ndepart_dat = 2026-07-09\n"
+        "[extent]\nwesternmost = -88\n"
+        "[thresholds]\ntemprature_difference = 0.1\nmystery = 1\n"
+    )
+    with pytest.raises(ConfigError) as raised:
+        load_config(path)
+    assert str(raised.value) == (
+        f"{path}: unknown keys: depart_date (top level): did you mean [cruise] depart_date?; "
+        "[cruise] depart_dat: did you mean depart_date?; "
+        "extent (top level): did you mean [cruise.extent]?; "
+        "[thresholds] temprature_difference: did you mean temperature_difference?; "
+        "[thresholds] mystery"
+    )
+
+
+@pytest.mark.parametrize(
+    "text, message",
+    [
+        ('cruise = "LAKE1"\n', "cruise (top level) must be a table, not a value"),
+        ("[cruise]\nextent = 3\n", "[cruise] extent must be a table, not a value"),
+        ("[cruise.id]\nx = 1\n", "[cruise] id must be a value, not a table"),
+        (
+            "[[thresholds]]\nsalinity_range = [0, 42]\n",
+            "[[thresholds]] must be one table, [thresholds]",
+        ),
+        ('theme = "dark"\n', "theme (top level) must be a table, not a value"),
+        (
+            '[cruise]\ndepart_date = "July"\n',
+            "[cruise] depart_date must be a date like 2026-07-09, not 'July'",
+        ),
+        (
+            "[cruise.extent]\nwesternmost = -88\n",
+            "[cruise.extent] needs easternmost, southernmost, northernmost",
+        ),
+    ],
+)
+def test_values_of_the_wrong_shape_are_errors(tmp_path, text, message):
+    path = tmp_path / "config.toml"
+    path.write_text(text)
+    with pytest.raises(ConfigError) as raised:
+        load_config(path)
+    assert str(raised.value) == f"{path}: {message}"
+
+
+def test_unreadable_configs_are_errors(tmp_path):
+    with pytest.raises(ConfigError, match="^no config TOML at .*missing.toml$"):
+        load_config(tmp_path / "missing.toml")
+    path = tmp_path / "config.toml"
+    path.write_text("[cruise\n")
+    with pytest.raises(ConfigError, match=r"^.*config.toml: Expected ']'"):
+        load_config(path)
+
+
+@pytest.mark.parametrize("command", ["run", "r2r run"])
+def test_the_cli_reports_a_bad_config_in_one_line(command, tmp_path, capsys):
+    path = tmp_path / "config.toml"
+    path.write_text('[cruise]\nid = "LAKE1"\ndepart_dat = 2026-07-09\n')
+    args = [str(tmp_path), "-o", str(tmp_path / "output")]
+    args = (
+        ["run", "-c", str(path), *args] if command == "run" else ["r2r", "run", str(path), *args]
+    )
+    assert main(args) == 1
+    assert capsys.readouterr().err == (
+        f"sbe-qa-processing: {path}: unknown key: [cruise] depart_dat: did you mean depart_date?\n"
+    )
+
+
+@pytest.mark.parametrize("bag", [False, True])
+def test_a_missing_fileset_directory_is_one_line(bag, tmp_path, capsys):
+    fileset = tmp_path / "MY_CASTS"
+    if bag:  # a bag without its data directory
+        fileset.mkdir()
+        (fileset / "bagit.txt").write_text("BagIt-Version: 0.97\n")
+    assert main(["run", str(fileset), "-o", str(tmp_path / "output")]) == 1
+    missing = f"data directory at {fileset / 'data'}" if bag else f"fileset directory at {fileset}"
+    assert capsys.readouterr().err == f"sbe-qa-processing: no {missing}\n"

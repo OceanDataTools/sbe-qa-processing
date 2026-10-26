@@ -52,6 +52,10 @@ class Cast(Readable):
         return self.raw is not None and self.config is not None and self.header is not None
 
 
+class FilesetError(FileNotFoundError):
+    """The fileset's directory, or a bag's data directory, isn't there"""
+
+
 @dataclass
 class ManifestEntry:
     path: str  # relative to the bag root, e.g. data/CAST1.hex
@@ -145,8 +149,10 @@ def load_fileset(path: Path | str, manifest_path: Path | str | None = None) -> F
     path = Path(path)
     is_bag = (path / "bagit.txt").exists()
     data_dir = path / "data" if is_bag else path
+    if not path.is_dir():
+        raise FilesetError(f"no fileset directory at {path}")
     if not data_dir.is_dir():
-        raise FileNotFoundError(f"no data directory at {data_dir}")
+        raise FilesetError(f"no data directory at {data_dir}")
 
     casts: dict[str, Cast] = {}
     for file in sorted(data_dir.rglob("*")):

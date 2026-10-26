@@ -217,3 +217,16 @@ def test_site_theme_round_trips(tmp_path):
     # Without one, the file shows how to set it
     path.write_text(site_config_to_toml(SiteConfig()))
     assert "# [theme]" in path.read_text()
+
+
+def test_unknown_site_keys_are_an_error(tmp_path):
+    from sbe_qa_processing.config import ConfigError
+
+    path = tmp_path / "site.toml"
+    path.write_text('[vessel]\nnme = "Revelle"\n[cruise]\nname = "Revelle"\n')
+    with pytest.raises(ConfigError) as raised:
+        load_site_config(path)
+    assert str(raised.value) == (
+        f"{path}: unknown keys: [vessel] nme: did you mean name?; "
+        "[cruise] name: did you mean [vessel] name?"
+    )

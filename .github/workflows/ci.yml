@@ -53,6 +53,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - run: uv sync --locked
-      # Nothing is fetched from R2R: the tests unpack the R2R validation filesets committed in
-      # tests/data/, so every R2R comparison runs on every OS. -rs lists any test that skips
+      # Nothing is fetched from R2R or Natural Earth: the tests unpack the R2R validation filesets
+      # committed in tests/data/, so every R2R comparison runs on every OS, and draw maps without
+      # Natural Earth. -rs lists any test that skips
       - run: uv run --locked pytest -rs

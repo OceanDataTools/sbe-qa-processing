@@ -25,16 +25,17 @@ The cruise TOML is a core config TOML with these added::
     yellow_minimum_percent = 50.0
 """
 
-import tomllib
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
 from sbe_qa_processing.config import (
+    ConfigError,
     Extent,
     QAConfig,
     fields_of,
     load_config,
+    read_toml,
     thresholds_toml,
     toml_value,
 )
@@ -93,13 +94,12 @@ REQUIRED = ("id", "depart_date", "arrive_date")
 
 def load_cruise_config(path: Path | str) -> CruiseConfig:
     """A cruise TOML, with the cruise ID and dates R2R needs"""
-    with open(path, "rb") as file:
-        data = tomllib.load(file)
+    core = load_config(path)  # checks the keys
+    data = read_toml(path)
     cruise = data.get("cruise", {})
     missing = [key for key in REQUIRED if key not in cruise]
     if missing:
-        raise ValueError(f"{path}: R2R needs [cruise] {', '.join(missing)}")
-    core = load_config(path)
+        raise ConfigError(f"{path}: R2R needs [cruise] {', '.join(missing)}")
     provenance = data.get("provenance", {})
     return CruiseConfig(
         **{name: getattr(core, name) for name in fields_of(QAConfig)},

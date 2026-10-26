@@ -279,8 +279,10 @@ def _wraps_longitudes(extent, longitudes: list[float]) -> bool:
     return span([lon % 360 for lon in longitudes]) < span(longitudes)
 
 
-def _emptiest_corner(points: list[tuple[float, float]], extent) -> str:
-    """The view quadrant with the fewest (lat, lon) points, for placing the world inset"""
+def _corners_by_emptiness(points: list[tuple[float, float]], extent) -> list[str]:
+    """The view's corners, the one whose quadrant has the fewest (lat, lon) points first: the
+    order in which the world inset tries them
+    """
     west, east, south, north = extent
     mid_lon, mid_lat = (west + east) / 2, (south + north) / 2
     counts = {
@@ -289,20 +291,137 @@ def _emptiest_corner(points: list[tuple[float, float]], extent) -> str:
         "upper left": sum(1 for lat, lon in points if lat >= mid_lat and lon < mid_lon),
         "upper right": sum(1 for lat, lon in points if lat >= mid_lat and lon >= mid_lon),
     }
-    return min(counts, key=counts.get)
+    return sorted(counts, key=counts.get)
 
 
-def _world_inset(
-    figure: Figure, axis, corner: str, latitude: float, longitude: float, theme: Theme
-) -> None:
-    """A small world map marking the cruise, in a corner of the cast map"""
-    colors = theme.colors
-    width, height = 0.3, 0.3
-    x = 0.02 if "left" in corner else 0.98 - width
-    y = 0.02 if "lower" in corner else 0.98 - height
-    inset = axis.inset_axes(
-        (x, y, width, height), projection=ccrs.Robinson(central_longitude=longitude)
+Rect = tuple[float, float, float, float]  # (x, y, width, height) in axes coordinates
+
+# The legend's places on the map, in the order they're tried after the corner opposite the inset
+LEGEND_PLACES = (
+    "upper right",
+    "upper left",
+    "lower left",
+    "lower right",
+    "upper center",
+    "lower center",
+    "center left",
+    "center right",
+)
+INSET_EDGES = ("upper center", "lower center", "center left", "center right")  # after corners
+OPPOSITE = {
+    "upper right": "lower left",
+    "upper left": "lower right",
+    "lower right": "upper left",
+    "lower left": "upper right",
+}
+INSET_SIZES = (0.3, 0.2)  # [axes fraction] the inset's width and height, tried in order
+INSET_PAD = 0.02  # [axes fraction] the inset's distance from the map's edges
+CLEARANCE = 0.02  # [axes fraction] kept between a cast marker and a legend or the inset
+
+
+def _corner_rect(place: str, width: float, height: float, pad_x: float, pad_y: float) -> Rect:
+    """The rectangle of a legend or inset of this size at a matplotlib legend location"""
+    if "left" in place:
+        x = pad_x
+    elif "right" in place:
+        x = 1 - pad_x - width
+    else:
+        x = (1 - width) / 2
+    if "lower" in place:
+        y = pad_y
+    elif "upper" in place:
+        y = 1 - pad_y - height
+    else:
+        y = (1 - height) / 2
+    return x, y, width, height
+
+
+def _covers(rect: Rect, points: np.ndarray, margin: float = CLEARANCE) -> bool:
+    """Whether any of the points (axes coordinates) is within margin of the rectangle"""
+    x, y, width, height = rect
+    inside = (
+        (points[:, 0] >= x - margin)
+        & (points[:, 0] <= x + width + margin)
+        & (points[:, 1] >= y - margin)
+        & (points[:, 1] <= y + height + margin)
     )
+    return bool(inside.any())
+
+
+def _overlap(a: Rect, b: Rect) -> bool:
+    return a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
+
+
+def _place_legend_and_inset(
+    figure: Figure,
+    axis,
+    positions: list[tuple[float, float]],
+    corners: list[str],
+    latitude: float,
+    longitude: float,
+    theme: Theme,
+) -> None:
+    """The legend (when there is one) and the world inset where they cover no cast, each
+    candidate place checked against the casts' (lat, lon). In order of preference: the inset
+    and the legend each in a clear place on the map; the inset with the legend below the map;
+    the legend on the map without the inset; the legend below the map without it.
+
+    Nothing is drawn to find them: the casts' axes coordinates follow from the map's extent, and
+    the legend's size from a renderer, so the layout is worked out once, when the figure is
+    saved, as it was before the placement was checked
+    """
+    if positions:
+        lats, lons = np.array(positions, dtype=float).T
+        projected = axis.projection.transform_points(ccrs.PlateCarree(), lons, lats)
+        points = axis.transLimits.transform(projected[:, :2])
+        points = points[np.isfinite(points).all(axis=1)]
+    else:
+        points = np.empty((0, 2))
+    insets = [  # (place, rect) clear of the casts, by preference
+        (place, rect)
+        for size in INSET_SIZES
+        for place in [*corners, *INSET_EDGES]
+        if not _covers(rect := _corner_rect(place, size, size, INSET_PAD, INSET_PAD), points)
+    ]
+    handles, labels = axis.get_legend_handles_labels()
+    if not handles:
+        if insets:
+            _world_inset(axis, insets[0][1], latitude, longitude, theme)
+        return
+
+    # The legend's size, from one measured and removed
+    renderer = figure.canvas.get_renderer()
+    measured = axis.legend(fontsize=_pt(theme, 7))
+    box, area = measured.get_window_extent(renderer), axis.get_window_extent(renderer)
+    pad = measured.borderaxespad * measured.prop.get_size_in_points() * figure.dpi / 72
+    measured.remove()
+    width, height = box.width / area.width, box.height / area.height
+    pad_x, pad_y = pad / area.width, pad / area.height
+
+    def legend_place(inset: tuple[str, Rect] | None) -> str | None:
+        first = [OPPOSITE[inset[0]]] if inset and inset[0] in OPPOSITE else []
+        for place in first + [p for p in LEGEND_PLACES if p not in first]:
+            rect = _corner_rect(place, width, height, pad_x, pad_y)
+            if not _covers(rect, points) and not (inset and _overlap(rect, inset[1])):
+                return place
+        return None
+
+    # Keep the inset if anywhere is clear for it, moving the legend below the map if need be
+    inset = next((i for i in insets if legend_place(i) is not None), None)
+    inset = inset or (insets[0] if insets else None)
+    place = legend_place(inset)
+    if place is not None:
+        axis.legend(fontsize=_pt(theme, 7), loc=place)
+    else:
+        figure.legend(handles, labels, loc="outside lower center", fontsize=_pt(theme, 7))
+    if inset is not None:
+        _world_inset(axis, inset[1], latitude, longitude, theme)
+
+
+def _world_inset(axis, rect: Rect, latitude: float, longitude: float, theme: Theme) -> None:
+    """A small world map marking the cruise, at rect on the cast map"""
+    colors = theme.colors
+    inset = axis.inset_axes(rect, projection=ccrs.Robinson(central_longitude=longitude))
     inset.set_global()
     inset.set_facecolor(colors.water)
     land = maps.world_geometries("physical", "land")
@@ -325,7 +444,8 @@ def _world_inset(
 
 def cast_map(casts: list[CastData], config: QAConfig, theme: Theme = DEFAULT_THEME) -> Figure:
     """Cast positions over coastlines, against the expected area when the config has one, with
-    a world inset showing where the casts were
+    a world inset showing where the casts were. The legend and inset go where they cover no
+    cast; the inset is left out when there's no such place
     """
     with themed(theme):
         return _cast_map(casts, config, theme)
@@ -439,16 +559,10 @@ def _cast_map(casts: list[CastData], config: QAConfig, theme: Theme) -> Figure:
         gridlines.xlocator = FixedLocator([(tick + 180) % 360 - 180 for tick in ticks])
     gridlines.top_labels = gridlines.right_labels = False
     gridlines.xlabel_style = gridlines.ylabel_style = {"size": _pt(theme, 7)}
-    corner = _emptiest_corner([(lat, unwrap(lon)) for _, (lat, lon) in positions], view)
-    legend_corner = {
-        "upper right": "lower left",
-        "upper left": "lower right",
-        "lower right": "upper left",
-        "lower left": "upper right",
-    }[corner]
-    if axis.get_legend_handles_labels()[0]:
-        axis.legend(fontsize=_pt(theme, 7), loc=legend_corner)
-    _world_inset(figure, axis, corner, center_lat, central, theme)
+    corners = _corners_by_emptiness([(lat, unwrap(lon)) for _, (lat, lon) in positions], view)
+    _place_legend_and_inset(
+        figure, axis, [p for _, p in positions], corners, center_lat, central, theme
+    )
     axis.set_title(
         "Cast positions (hollow squares are deck tests"
         + ("; red is outside the extent)" if extent is not None else ")"),

@@ -184,24 +184,25 @@ def test_vessel_settings(block, expected):
     assert openvdm.vessel_settings(block, "openvdm.yaml").settings == expected
 
 
-def test_resolve_prefers_openvdms_vessel_settings(tmp_path):
+def test_resolve_prefers_the_site_configs_vessel_settings(tmp_path):
     site = openvdm.SiteConfig(
         vessel_name="Sproul", contact_institution="Scripps Institution of Oceanography"
     )
     vessel = openvdm.vessel_settings(VESSEL, "openvdm.yaml")
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD", vessel=vessel)
     config = run.config
-    assert (config.vessel_name, config.contact_email) == ("Robert Gordon Sproul", "ops@ucsd.edu")
+    # The site config's name; OpenVDM's email, which the site config leaves blank
+    assert (config.vessel_name, config.contact_email) == ("Sproul", "ops@ucsd.edu")
     assert run.vessel_source == "openvdm.yaml"
     # A disagreement is noted; an agreement isn't
     expected = (
-        "vessel_name is 'Robert Gordon Sproul' in OpenVDM's openvdm.yaml and 'Sproul' in the "
-        "site config; using openvdm.yaml's"
+        "vessel_name is 'Sproul' in the site config and 'Robert Gordon Sproul' in OpenVDM's "
+        "openvdm.yaml; using the site config's"
     )
     assert [n for n in run.notes if "vessel_name" in n] == [expected]
     assert not any("contact_institution" in note for note in run.notes)
 
-    # Fields OpenVDM leaves unset still come from the site config
+    # Fields the site config leaves blank come from OpenVDM, and the others from the site
     site = openvdm.SiteConfig(contact_email="tech@example.org")
     vessel = openvdm.vessel_settings({"name": "Sproul"}, "openvdm.yaml")
     config = openvdm.resolve(cruise_config(tmp_path), site, "CTD", vessel=vessel).config
@@ -220,9 +221,11 @@ def test_resolve_reads_the_vessel_from_ovdmconfig_json(tmp_path, caplog):
         json.dumps({"cruiseID": "SP2613", "vessel": VESSEL})
     )
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
-    assert (run.vessel_source, run.config.vessel_name) == (
+    # The site config's name wins; the contact it leaves blank comes from ovdmConfig.json
+    assert (run.vessel_source, run.config.vessel_name, run.config.contact_email) == (
         "ovdmConfig.json",
-        "Robert Gordon Sproul",
+        "Sproul",
+        "ops@ucsd.edu",
     )
 
     (cruise_dir / "ovdmConfig.json").write_text("{not json")

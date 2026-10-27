@@ -15,10 +15,16 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from sbe_qa_processing.integrations.r2r.catalog import R2RError, fetch_r2r_records, http_error
+from sbe_qa_processing.integrations.r2r.catalog import (
+    R2RError,
+    fetch_r2r_records,
+    http_error,
+    qa_report_url,
+)
 from sbe_qa_processing.network import reaching
 
 R2R = "https://service.rvdata.us"
+SUFFIXES = ("qa.2.0.xml", "qa.xml")  # R2R's QA reports' file name endings, newest first
 DOWNLOAD_TIMEOUT = 120  # [s]
 
 
@@ -26,7 +32,9 @@ DOWNLOAD_TIMEOUT = 120  # [s]
 class Download:
     files: int
     bag_url: str
-    qa_report: Path | None  # None when R2R has no QA report for the fileset
+    qa_report: Path | None  # None when R2R has no QA report for the fileset, or didn't serve it
+    # Why R2R's QA report isn't in qa_report when R2R lists one, else ""
+    qa_report_problem: str = ""
 
 
 def build_opener() -> urllib.request.OpenerDirector:
@@ -106,7 +114,9 @@ def extract_bag(archive: bytes, destination: Path) -> int:
 def download_fileset(cruise_id: str, fileset_id: int, destination: Path) -> Download:
     """The fileset's bag and R2R's QA report, into destination"""
     filesets = [
-        f for f in fetch_r2r_records("fileset", cruise_id) if f.get("fileset_id") == fileset_id
+        f
+        for f in fetch_r2r_records("fileset", cruise_id=cruise_id)
+        if f.get("fileset_id") == fileset_id
     ]
     if not filesets or not filesets[0].get("download_url"):
         raise R2RError(f"{cruise_id} fileset {fileset_id} isn't released for download")
@@ -124,7 +134,7 @@ def download_fileset(cruise_id: str, fileset_id: int, destination: Path) -> Down
         count = download_tree(opener, bag_url, destination)
 
     try:
-        report = download_qa_report(opener, cruise_id, fileset_id, destination)
+        report, problem = download_qa_report(opener, cruise_id, fileset_id, destination)
     except (R2RError, OSError) as error:  # OSError: NetworkError
         # The raw files are in; say what's missing and how to fetch it
         raise R2RError(
@@ -132,22 +142,42 @@ def download_fileset(cruise_id: str, fileset_id: int, destination: Path) -> Down
             "Run again with --force to fetch it",
             getattr(error, "status", None),
         ) from error
-    return Download(count, bag_url, report)
+    return Download(count, bag_url, report, problem)
 
 
-def download_qa_report(opener, cruise_id: str, fileset_id: int, destination: Path) -> Path | None:
-    """R2R's QA report into destination, or None when R2R has none"""
+def download_qa_report(
+    opener, cruise_id: str, fileset_id: int, destination: Path
+) -> tuple[Path | None, str]:
+    """R2R's QA report into destination as r2r_qa.2.0.xml (r2r_qa.xml for an older one), and
+    "". The report's URL is the one R2R's ``api/qa_info`` lists; without one, the usual URLs are
+    tried. (None, "") when R2R has no report, and (None, why) when it lists one but doesn't
+    serve it
+    """
+    listed = qa_report_url(fileset_id)
     qa_base = f"{R2R}/data/cruise/{cruise_id}/fileset/{fileset_id}/qa/"
-    for suffix in ("qa.2.0.xml", "qa.xml"):
+    urls = [listed] if listed else [f"{qa_base}{cruise_id}_{fileset_id}_{s}" for s in SUFFIXES]
+    for url in urls:
         try:
-            _, qa = fetch(opener, f"{qa_base}{cruise_id}_{fileset_id}_{suffix}", "R2R's QA report")
+            _, qa = fetch(opener, url, "R2R's QA report")
         except R2RError as error:
-            if error.status == 404:
-                continue
-            raise
+            if error.status != 404:
+                raise
+            if listed:
+                return (
+                    None,
+                    f"R2R lists a QA report for this fileset but doesn't serve it: {error}",
+                )
+            continue
         # R2R answers missing files with 200 and an "ERROR: ..." body
         if qa.lstrip().startswith(b"<?xml"):
+            suffix = next(s for s in SUFFIXES if url.endswith(s))
             report = destination / f"r2r_{suffix}"
             report.write_bytes(qa)
-            return report
-    return None
+            return report, ""
+        if listed:
+            answer = qa.decode(errors="replace").strip().splitlines()[:1] or ["an empty page"]
+            return None, (
+                f"R2R lists a QA report for this fileset but doesn't serve it: {url} answered "
+                f"{answer[0]!r}; try again later"
+            )
+    return None, ""

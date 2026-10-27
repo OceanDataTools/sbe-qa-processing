@@ -1,6 +1,7 @@
 """Cruise configs from R2R's catalog API and from R2R's QA 2.0 reports."""
 
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -35,11 +36,12 @@ def http_error(error: urllib.error.HTTPError, what: str, url: str) -> R2RError:
     )
 
 
-def fetch_r2r_records(endpoint: str, cruise_id: str) -> list[dict]:
-    """A cruise's records from R2R's catalog API (``api/cruise``, ``api/fileset``). The API
-    answers "not found" with a 204 status in the body and no data
+def fetch_r2r_records(endpoint: str, **query) -> list[dict]:
+    """Records from R2R's catalog API (``api/cruise``, ``api/fileset``, ``api/qa_info``) for a
+    query, e.g. ``cruise_id=...``. The API answers "not found" with a 204 status in the body and
+    no data
     """
-    url = f"{R2R_API}/{endpoint}/?cruise_id={urllib.parse.quote(cruise_id)}"
+    url = f"{R2R_API}/{endpoint}/?{urllib.parse.urlencode(query)}"
     try:
         with (
             reaching("R2R", url),
@@ -51,12 +53,30 @@ def fetch_r2r_records(endpoint: str, cruise_id: str) -> list[dict]:
     return json.loads(body).get("data") or []
 
 
+# R2R's QA reports among a fileset's documents: the QA 2.0 report, or an older one
+QA_REPORT = re.compile(r"_qa(\.2\.0)?\.xml$")
+
+
+def qa_report_url(fileset_id: int | str) -> str | None:
+    """The URL of R2R's QA report for a fileset, from ``api/qa_info``'s documents (the QA 2.0
+    report ahead of an older one), or None when R2R lists none
+    """
+    urls = [
+        document["uri"]
+        for record in fetch_r2r_records("qa_info", fileset_id=fileset_id)
+        for document in json.loads(record.get("documents") or "[]")
+        if QA_REPORT.search(document.get("file_name", "")) and document.get("uri")
+    ]
+    urls.sort(key=lambda url: not url.endswith("_qa.2.0.xml"))
+    return urls[0] if urls else None
+
+
 def config_from_r2r_catalog(cruise_id: str, fileset_id: int) -> CruiseConfig:
     """Cruise config from R2R's catalog API, checking the CTD fileset belongs to the cruise"""
-    cruises = fetch_r2r_records("cruise", cruise_id)
+    cruises = fetch_r2r_records("cruise", cruise_id=cruise_id)
     if not cruises:
         raise R2RError(f"R2R has no cruise {cruise_id}")
-    filesets = fetch_r2r_records("fileset", cruise_id)
+    filesets = fetch_r2r_records("fileset", cruise_id=cruise_id)
     ctd = [f for f in filesets if f.get("device_type") == "ctd"]
     matches = [f for f in ctd if f.get("fileset_id") == fileset_id]
     if not matches:

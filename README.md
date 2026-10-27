@@ -173,7 +173,8 @@ thresholds and the report's details; every field is optional.
 ### Command line
 
 `sbe-qa-processing --help` lists the commands, and `sbe-qa-processing COMMAND --help` (or
-`sbe-qa-processing r2r COMMAND --help`) documents each one. The core commands are `run` and
+`sbe-qa-processing r2r COMMAND --help`) documents each one. `sbe-qa-processing --version`
+prints the version. The core commands are `run` and
 `fetch-map-data`; the [R2R commands](#r2r-commands) are a group under `r2r`, and the
 [OpenVDM commands](#openvdm-commands) are `openvdm`, `config-from-openvdm` and `site-config`.
 

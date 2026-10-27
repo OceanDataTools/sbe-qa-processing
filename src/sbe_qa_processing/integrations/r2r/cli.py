@@ -74,7 +74,9 @@ def _r2r_fetch_fileset(args: argparse.Namespace) -> int:
         return 1
     download = download_fileset(args.cruise_id, args.fileset_id, destination)
     if download.qa_report is None:
-        print("R2R has no QA report for this fileset", file=sys.stderr)
+        print(
+            download.qa_report_problem or "R2R has no QA report for this fileset", file=sys.stderr
+        )
     print(f"{download.files} files from {download.bag_url} -> {destination}")
     return 0
 

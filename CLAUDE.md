@@ -77,7 +77,7 @@ All code is in `src/sbe_qa_processing/`. `qa.run_qa(fileset, config=None)` is th
    - `xml_report.py`: the R2R schema with its stylesheet reference;
    - `certificate.py`: the certificate's PDF pages and notebook cells;
    - `reports.py`: `run_r2r` and `write_r2r_reports`;
-   - `download.py`: `r2r fetch-fileset`;
+   - `download.py`: `r2r fetch-fileset`. The QA report's URL is the one `api/qa_info`'s `documents` lists (`catalog.qa_report_url`), else the usual `<CRUISE>_<FILESET>_qa.2.0.xml`/`_qa.xml`; a listed report R2R doesn't serve is `Download.qa_report_problem`;
    - `cli.py`: the `r2r` commands.
 10. **`integrations/openvdm/`** is OpenVDM. It writes the core reports only, never R2R's:
    - `hook.py` builds a core `QAConfig` from OpenVDM's `api/warehouse/getCruiseConfig` (including `cruiseExtent`, from OpenVDM 2.17), OpenVDM 2.17's `vessel` block (name and contact; its R2R IDs are ignored) and an optional site TOML. The vessel block comes from `openvdm.yaml`, or from the cruise's `ovdmConfig.json` when the hook only has `--site-root`. The site TOML's values win, field by field; OpenVDM's fill those it leaves blank, a disagreement is noted, and `site-config` offers OpenVDM's as defaults. A site TOML's old R2R settings are ignored and listed in `SiteConfig.ignored`;

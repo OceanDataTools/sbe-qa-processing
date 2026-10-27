@@ -7,8 +7,9 @@ import tarfile
 import tomllib
 
 import pytest
-from conftest import FIXTURES
+from conftest import FIXTURES, ROOT
 
+from sbe_qa_processing import __version__
 from sbe_qa_processing.cli import build_parser, main
 from sbe_qa_processing.integrations.r2r import catalog
 from sbe_qa_processing.integrations.r2r.download import extract_bag
@@ -89,6 +90,16 @@ def test_every_argument_is_documented():
                 assert action.metavar and action.metavar.isupper(), label
             if "-o" in action.option_strings:
                 assert action.option_strings == ["-o", "--output"], label
+
+
+def test_version(capsys):
+    with pytest.raises(SystemExit) as exited:
+        main(["--version"])
+    assert exited.value.code == 0
+    assert capsys.readouterr().out == f"sbe-qa-processing {__version__}\n"
+    # __version__ and the package's version are written separately; they must agree
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    assert __version__ == pyproject["project"]["version"]
 
 
 def test_fileset_ids_are_integers(capsys):

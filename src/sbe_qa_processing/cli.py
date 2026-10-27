@@ -24,6 +24,7 @@ import traceback
 import warnings
 from pathlib import Path
 
+from sbe_qa_processing import __version__
 from sbe_qa_processing.clitools import add_report_output, print_summary, refuse_existing_reports
 from sbe_qa_processing.config import ConfigError
 from sbe_qa_processing.fileset import FilesetError
@@ -101,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="sbe-qa-processing",
         description="QA reports (PDF, notebook) for SBE 9/911plus CTD filesets",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
     run = commands.add_parser(

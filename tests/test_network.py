@@ -2,6 +2,7 @@
 (issue 33)."""
 
 import io
+import json
 import logging
 import socket
 import tarfile
@@ -162,8 +163,10 @@ class FakeOpener:
 
     def __init__(self, qa):
         self.qa = qa
+        self.opened = []
 
     def open(self, url, timeout=None):
+        self.opened.append(url)
         if "/qa/" not in url:
             return FakeResponse(url, bag())
         if isinstance(self.qa, int):
@@ -191,8 +194,13 @@ def bag() -> bytes:
 
 @pytest.fixture
 def released(monkeypatch):
+    """A released fileset whose QA report R2R's qa_info doesn't list: the usual URLs are tried"""
     record = {"fileset_id": 169847, "download_url": "https://service.rvdata.us/bag"}
-    monkeypatch.setattr(download, "fetch_r2r_records", lambda *args: [record])
+    monkeypatch.setattr(download, "fetch_r2r_records", lambda *args, **query: [record])
+    monkeypatch.setattr(download, "qa_report_url", lambda fileset_id: None)
+
+
+LISTED = "https://service.rvdata.us/data/cruise/SP2613/fileset/169847/qa/SP2613_169847_qa.2.0.xml"
 
 
 def test_r2r_qa_report_http_error_after_the_bag(released, tmp_path, monkeypatch, capsys):
@@ -217,3 +225,56 @@ def test_r2r_qa_report_downloaded(released, tmp_path, monkeypatch):
     monkeypatch.setattr(download, "build_opener", lambda: FakeOpener(b"<?xml version='1.0'?>"))
     assert main(["r2r", "fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 0
     assert (tmp_path / "SP2613_169847_ctd" / "r2r_qa.2.0.xml").exists()
+
+
+def test_r2r_qa_report_url_from_qa_info(monkeypatch):
+    base = "https://service.rvdata.us/data/cruise/SP2613/fileset/169847/qa/"
+    documents = [
+        {"uri": f"{base}config/SP2613_STATION1.txt", "file_name": "SP2613_STATION1.txt"},
+        {"uri": f"{base}SP2613_169847_qa.xml", "file_name": "SP2613_169847_qa.xml"},
+        {"uri": f"{base}SP2613_169847_qa.2.0.xml", "file_name": "SP2613_169847_qa.2.0.xml"},
+    ]
+    asked = []
+
+    def records(endpoint, **query):
+        asked.append((endpoint, query))
+        return [{"fileset_id": 169847, "documents": json.dumps(documents)}]
+
+    monkeypatch.setattr(catalog, "fetch_r2r_records", records)
+    assert catalog.qa_report_url(169847) == f"{base}SP2613_169847_qa.2.0.xml"  # ahead of qa.xml
+    assert asked == [("qa_info", {"fileset_id": 169847})]
+    monkeypatch.setattr(catalog, "fetch_r2r_records", lambda *args, **query: [])
+    assert catalog.qa_report_url(169847) is None
+
+
+def test_r2r_qa_report_listed_in_qa_info_is_fetched(released, tmp_path, monkeypatch):
+    opener = FakeOpener(b"<?xml version='1.0'?>")
+    monkeypatch.setattr(download, "build_opener", lambda: opener)
+    monkeypatch.setattr(download, "qa_report_url", lambda fileset_id: LISTED)
+    assert main(["r2r", "fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 0
+    assert (tmp_path / "SP2613_169847_ctd" / "r2r_qa.2.0.xml").exists()
+    assert opener.opened[-1] == LISTED and len(opener.opened) == 2  # the bag, then the report
+
+
+@pytest.mark.parametrize(
+    "qa, answer",
+    [
+        (
+            b"ERROR: file not readable or not found: cruise/SP2613/...\n",
+            (
+                f"{LISTED} answered 'ERROR: file not readable or not found: cruise/SP2613/...'; "
+                "try again later"
+            ),
+        ),
+        (404, "R2R's QA report (service.rvdata.us) answered 404 Not Found"),
+    ],
+)
+def test_r2r_qa_report_listed_but_not_served(released, tmp_path, monkeypatch, capsys, qa, answer):
+    """R2R lists the report in qa_info but doesn't serve it: the bag is in, and that's said"""
+    monkeypatch.setattr(download, "build_opener", lambda: FakeOpener(qa))
+    monkeypatch.setattr(download, "qa_report_url", lambda fileset_id: LISTED)
+    assert main(["r2r", "fetch-fileset", "SP2613", "169847", "-o", str(tmp_path)]) == 0
+    assert (tmp_path / "SP2613_169847_ctd" / "bagit.txt").exists()
+    assert capsys.readouterr().err == (
+        f"R2R lists a QA report for this fileset but doesn't serve it: {answer}\n"
+    )

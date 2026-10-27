@@ -209,7 +209,6 @@ sbe-qa-processing r2r fetch-fileset SP2613 169847
 ```
 
 ```text
-R2R has no QA report for this fileset
 25 files from https://g-1e773d.99817a.0ec8.data.globus.org/SP2613/SP2613_169847_ctd.tar.gz -> data/SP2613_169847_ctd
 ```
 
@@ -217,12 +216,12 @@ R2R has no QA report for this fileset
 data/SP2613_169847_ctd/
   bagit.txt, bag-info.txt, manifest-md5.txt, tagmanifest-md5.txt, file-info.txt
   data/                                  the raw Seasave files
-  r2r_qa.2.0.xml                         R2R's QA report, when R2R serves one
+  r2r_qa.2.0.xml                         R2R's QA report
 ```
 
-On this run R2R answered its QA report's URL with an error, so only the bag arrived; the
-tests' copy of SP2613 (`tests/data/`, unpacked into `data/` by `uv run pytest`) has R2R's
-report, and the comparison below uses it.
+The report is the one R2R's catalog lists for the fileset (`api/qa_info`). When R2R has none,
+the command says "R2R has no QA report for this fileset"; when R2R lists one but doesn't serve
+it, it says so, with R2R's answer. Either way the bag is in.
 
 ### Make its cruise TOML
 

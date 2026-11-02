@@ -46,7 +46,7 @@ def cruise_config(base_dir: Path, cruise_id="SP2613", extent: dict | None = None
             "shipboardDataWarehouseBaseDir": str(base_dir),
             "shipboardDataWarehouseUsername": "survey",
             "md5SummaryFn": "MD5_Summary.txt",
-            "cruiseConfigFn": "ovdmConfig.json",
+            "cruiseConfigFn": "cruise_config.json",
         },
         "collectionSystemTransfersConfig": [
             {"collectionSystemTransferID": "4", "name": "CTD", "destDir": "CTD"},
@@ -151,7 +151,7 @@ def test_resolve_notes_r2r_settings_it_ignores(tmp_path):
     assert "the site config's [vessel] id isn't used" in run.notes
 
 
-# OpenVDM 2.17's vessel block, as in openvdm.yaml and ovdmConfig.json
+# OpenVDM 2.17's vessel block, as in openvdm.yaml and cruise_config.json
 VESSEL = {
     "name": "Robert Gordon Sproul",
     "contact": {"institution": "Scripps Institution of Oceanography", "email": "ops@ucsd.edu"},
@@ -209,26 +209,36 @@ def test_resolve_prefers_the_site_configs_vessel_settings(tmp_path):
     assert (config.vessel_name, config.contact_email) == ("Sproul", "tech@example.org")
 
 
-def test_resolve_reads_the_vessel_from_ovdmconfig_json(tmp_path, caplog):
+def test_resolve_reads_the_vessel_from_the_cruise_config_file(tmp_path, caplog):
     cruise_dir = tmp_path / "SP2613"
     cruise_dir.mkdir()
     site = openvdm.SiteConfig(vessel_name="Sproul")
-    # No ovdmConfig.json yet: the site config alone
+    # No cruise_config.json yet: the site config alone
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
     assert (run.vessel_source, run.config.vessel_name) == ("none", "Sproul")
 
-    (cruise_dir / "ovdmConfig.json").write_text(
+    (cruise_dir / "cruise_config.json").write_text(
         json.dumps({"cruiseID": "SP2613", "vessel": VESSEL})
     )
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
-    # The site config's name wins; the contact it leaves blank comes from ovdmConfig.json
+    # The site config's name wins; the contact it leaves blank comes from cruise_config.json
     assert (run.vessel_source, run.config.vessel_name, run.config.contact_email) == (
-        "ovdmConfig.json",
+        "cruise_config.json",
         "Sproul",
         "ops@ucsd.edu",
     )
 
-    (cruise_dir / "ovdmConfig.json").write_text("{not json")
+    # The file OpenVDM's API names, else OpenVDM's default name
+    named = cruise_config(tmp_path)
+    named["warehouseConfig"]["cruiseConfigFn"] = "ship_config.json"
+    (cruise_dir / "ship_config.json").write_text(json.dumps({"vessel": {"name": "Ship"}}))
+    run = openvdm.resolve(named, openvdm.SiteConfig(), "CTD")
+    assert (run.vessel_source, run.config.vessel_name) == ("ship_config.json", "Ship")
+    del named["warehouseConfig"]["cruiseConfigFn"]
+    run = openvdm.resolve(named, openvdm.SiteConfig(), "CTD")
+    assert run.vessel_source == openvdm.CRUISE_CONFIG_FN == "cruise_config.json"
+
+    (cruise_dir / "cruise_config.json").write_text("{not json")
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
     assert (run.vessel_source, run.config.vessel_name) == ("none", "Sproul")
     assert "can't read the vessel settings" in caplog.text
@@ -316,7 +326,7 @@ def test_queue_md5_update(tmp_path, monkeypatch):
         [
             str(install / "venv/bin/python"),
             str(install / "utils/update_md5_summary.py"),
-            "--cruiseID",
+            "--cruise-id",
             "SP2613",
             "Products/CTD_QA/SP2613_plots/cast_map.svg",
             "Products/CTD_QA/SP2613_plots/station1_ts.svg",
@@ -442,7 +452,7 @@ def test_hook_writes_reports_into_the_extra_directory(
 
     # Every report goes to OpenVDM's MD5 summary; a failure to queue that doesn't fail the hook
     (command,) = md5_update.commands
-    assert command[2:4] == ["--cruiseID", "SP2613"]
+    assert command[2:4] == ["--cruise-id", "SP2613"]
     queued = set(command[4:])
     assert {
         "Products/CTD_QA/SP2613_cruise.toml",
@@ -511,10 +521,10 @@ def test_config_from_openvdm_with_openvdm_yaml(openvdm_api, tmp_path, capsys):
     site_root, cruise_dir = openvdm_api
     openvdm_yaml = tmp_path / "openvdm.yaml"
     openvdm_yaml.write_text(yaml.safe_dump({"siteRoot": site_root, "vessel": VESSEL}))
-    # openvdm.yaml is current, so it wins over an older ovdmConfig.json
+    # openvdm.yaml is current, so it wins over an older cruise_config.json
     cruise_dir.mkdir(parents=True)
     old_vessel = {"name": "Sproul"}
-    (cruise_dir / "ovdmConfig.json").write_text(json.dumps({"vessel": old_vessel}))
+    (cruise_dir / "cruise_config.json").write_text(json.dumps({"vessel": old_vessel}))
     args = ["config-from-openvdm", "--openvdm-config", str(openvdm_yaml), "-o", "-"]
     assert main(args) == 0
     captured = capsys.readouterr()
@@ -522,11 +532,11 @@ def test_config_from_openvdm_with_openvdm_yaml(openvdm_api, tmp_path, capsys):
     assert cruise["vessel_name"] == "Robert Gordon Sproul" and "vessel_id" not in cruise
     assert "vessel settings from openvdm.yaml" in captured.err
 
-    # With --site-root there's no openvdm.yaml: the cruise's ovdmConfig.json
+    # With --site-root there's no openvdm.yaml: the cruise's cruise_config.json
     assert main(["config-from-openvdm", "--site-root", site_root, "-o", "-"]) == 0
     captured = capsys.readouterr()
     assert tomllib.loads(captured.out)["cruise"]["vessel_name"] == "Sproul"
-    assert "vessel settings from ovdmConfig.json" in captured.err
+    assert "vessel settings from cruise_config.json" in captured.err
 
 
 def test_openvdm_yaml_not_found(tmp_path, capsys):

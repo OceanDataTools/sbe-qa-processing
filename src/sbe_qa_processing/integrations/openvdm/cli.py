@@ -33,7 +33,7 @@ def _resolve_openvdm(args: argparse.Namespace):
     from sbe_qa_processing.integrations.openvdm import hook as openvdm
 
     if args.site_root:
-        # No openvdm.yaml: resolve reads the vessel block from the cruise's ovdmConfig.json
+        # No openvdm.yaml: resolve reads the vessel block from the cruise's cruise_config.json
         site_root, vessel = args.site_root, None
     else:
         settings = openvdm.load_openvdm_yaml(args.openvdm_config)
@@ -186,7 +186,7 @@ def _add_openvdm_arguments(parser: argparse.ArgumentParser) -> None:
         metavar="URL",
         help=(
             "OpenVDM's web root URL, instead of --openvdm-config; the vessel settings then come "
-            "from the cruise's ovdmConfig.json"
+            "from the cruise's cruise_config.json"
         ),
     )
     parser.add_argument(

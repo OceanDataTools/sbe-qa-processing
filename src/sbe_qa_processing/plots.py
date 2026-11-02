@@ -191,10 +191,17 @@ def _ts_diagram(data: CastData, theme: Theme) -> Figure:
     )
     axis.clabel(lines, fontsize=_pt(theme, 6), fmt=lambda level: f"{level:g}")
     # At most TS_MAX_POINTS evenly spaced scans: indistinguishable at page scale, and keeps the
-    # SVG small (a deep cast has ~80,000 downcast scans)
+    # SVG small (a deep cast has ~80,000 downcast scans). Rasterized (at the SVG's raster dpi):
+    # as vectors, each colored marker is its own SVG element, which made the TS diagram 0.7 MB,
+    # 27 MB once parsed for the PDF and most of the PDF's build time
     keep = np.unique(np.linspace(0, len(contour.x) - 1, TS_MAX_POINTS).astype(int))
     points = axis.scatter(
-        contour.x[keep], contour.y[keep], c=data.pressure[down][keep], s=1, cmap="viridis_r"
+        contour.x[keep],
+        contour.y[keep],
+        c=data.pressure[down][keep],
+        s=1,
+        cmap="viridis_r",
+        rasterized=True,
     )
     figure.colorbar(points, ax=axis, label="Pressure [dbar]")
     axis.set_xlabel("Absolute salinity [g/kg]")

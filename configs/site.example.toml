@@ -22,6 +22,22 @@ output_extra_directory = "CTD_QA"         # where the reports are written
 # contact_institution = "Scripps Institution of Oceanography"
 # contact_email = "ship-tech@example.org"
 
-# QA thresholds, as in a config TOML; e.g. for fresh water:
-# [thresholds]
-# salinity_range = [0.0, 42.0]
+# The science checks' limits, as in a config TOML (configs/config.example.toml), here at their
+# defaults; ranges are [low, high]. E.g. for fresh water, salinity_range = [0.0, 2.0]
+[thresholds]
+# temperature_difference = 0.01       # [deg C] dual sensors: median |primary - secondary|
+# conductivity_difference = 0.001     # [S/m]
+# salinity_difference = 0.01          # [PSU]
+# dual_sensor_min_pressure = 20.0     # [dbar] dual-sensor differences are taken below this
+# temperature_range = [-2.5, 40.0]    # [deg C] plausible ranges
+# conductivity_range = [0.0, 7.0]     # [S/m]
+# salinity_range = [2.0, 42.0]        # [PSU]
+# pressure_range = [-5.0, 11000.0]    # [dbar]
+# max_spike_percent = 0.5             # [%] scans Wild Edit flags
+# max_lost_scan_percent = 0.1         # [%] scans missing from the modulo counter
+# max_calibration_age_days = 365      # [days] older calibrations warn
+
+# The reports' theme: configs/theme.example.toml shows every setting, which go here as
+# [theme] (and [theme.colors]); paths are relative to this file
+# [theme]
+# page_size = "A4"

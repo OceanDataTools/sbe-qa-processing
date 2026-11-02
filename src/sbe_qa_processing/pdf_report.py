@@ -176,11 +176,15 @@ def _slug(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_")
 
 
+SVG_RASTER_DPI = 300  # [dots per inch] the TS markers: like vectors on the printed page
+
+
 def _save_svg(figure: Figure, path: Path) -> Path:
     # No date in the metadata, and a fixed salt for matplotlib's clip path IDs (random by
-    # default), so re-running gives identical files
+    # default), so re-running gives identical files. Rasterized artists (the TS diagram's
+    # markers) are drawn at SVG_RASTER_DPI; the rest stays vector
     with matplotlib.rc_context({"svg.hashsalt": "sbe-qa-processing"}):
-        figure.savefig(path, format="svg", metadata={"Date": None})
+        figure.savefig(path, format="svg", metadata={"Date": None}, dpi=SVG_RASTER_DPI)
     plt.close(figure)
     return path
 

@@ -237,7 +237,8 @@ the maps are drawn without coastlines. The tests set it.
 
 A config TOML describes the cruise for the reports, sets the expected area and dates for the
 integrity checks, and tunes the science checks. Every table and key is optional; leave out
-what you don't know. A complete example:
+what you don't know. `configs/config.example.toml` shows every key, with each threshold at its
+default. A complete example:
 
 ```toml
 [cruise]
@@ -607,7 +608,8 @@ R2R's. The hook reads the current cruise from OpenVDM's API
 warehouse directory, the CTD transfer's destination, the extra directories and the MD5 summary.
 From OpenVDM 2.17, the vessel's name and contact come from the `vessel` block of `openvdm.yaml`,
 which OpenVDM's installer asks for. With `--site-root` instead of `--openvdm-config`, they come
-from the copy in the cruise's `ovdmConfig.json`.
+from the copy in the cruise's `cruise_config.json` (OpenVDM's per-cruise config file, which its
+`CRUISE_CONFIG_FN` setting names).
 
 1. Install this project with the `openvdm` extra (pyyaml, to read `openvdm.yaml`) somewhere
    OpenVDM's worker can run it (it has its own environment, not OpenVDM's venv), and fetch the
@@ -684,6 +686,7 @@ check a cruise against R2R's tests, use `r2r run` with a cruise TOML from R2R's 
 
 ```text
 sbe-qa-processing openvdm [--openvdm-config OPENVDM_YAML | --site-root URL]
+                          [--cruise-config CRUISE_CONFIG_JSON]
                           [--site-config SITE_TOML] [--changed-files FILES]
                           [--execute-notebook] [--theme THEME_TOML] [--fileset-id FILESET_ID]
                           [TRANSFER]
@@ -697,7 +700,8 @@ Installed `openvdm.yaml` files call it, so its arguments keep their names.
 |---|---|---|
 | `TRANSFER` | `CTD` | The collection system transfer's name; in a hook, `{collectionSystemTransferName}` |
 | `--openvdm-config OPENVDM_YAML` | `/opt/openvdm/server/etc/openvdm.yaml` | OpenVDM's settings: its web root (`siteRoot`) and, from OpenVDM 2.17, the `vessel` block. Needs the `openvdm` extra |
-| `--site-root URL` | none | OpenVDM's web root, instead of `--openvdm-config`. The vessel block then comes from the cruise's `ovdmConfig.json` |
+| `--site-root URL` | none | OpenVDM's web root, instead of `--openvdm-config`. The vessel block then comes from the cruise's `cruise_config.json` |
+| `--cruise-config CRUISE_CONFIG_JSON` | none | A cruise's `cruise_config.json`, in its directory: that cruise, past or current, without OpenVDM's API (which knows only the current cruise). The vessel block comes from the same file, and `--openvdm-config` then only says where OpenVDM is, for the MD5 summary. Not with `--site-root` |
 | `--site-config SITE_TOML` | none | The ship's [site TOML](#site-toml) |
 | `--changed-files FILES` | none | OpenVDM's `{newFiles}` and `{updatedFiles}`; repeatable. When given, the QA runs only if they include CTD files. Use the `--changed-files={newFiles}` form, so an empty list isn't dropped |
 | `--execute-notebook` | off | Run the notebook and save its outputs |
@@ -708,13 +712,14 @@ Installed `openvdm.yaml` files call it, so its arguments keep their names.
 
 ```text
 sbe-qa-processing config-from-openvdm [--openvdm-config OPENVDM_YAML | --site-root URL]
+                                      [--cruise-config CRUISE_CONFIG_JSON]
                                       [--site-config SITE_TOML] [-o OUTPUT_DIR] [--force]
                                       [TRANSFER]
 ```
 
 Builds the config TOML the hook would use, from OpenVDM's current cruise and the site TOML,
 without running the QA, and reports what's missing or assumed. `TRANSFER`, `--openvdm-config`,
-`--site-root` and `--site-config` are as for `openvdm`.
+`--site-root`, `--cruise-config` and `--site-config` are as for `openvdm`.
 
 | Argument | Default | Description |
 |---|---|---|
@@ -765,6 +770,16 @@ running the QA:
 uv run sbe-qa-processing config-from-openvdm --site-config configs/site.toml \
     --openvdm-config /opt/openvdm/server/etc/openvdm.yaml                      # configs/<CRUISE>.toml
 uv run sbe-qa-processing run /path/to/cruise/CTD -c configs/<CRUISE>.toml -o output/<CRUISE>
+```
+
+For an earlier cruise, which OpenVDM's API no longer gives, point `--cruise-config` at the
+`cruise_config.json` OpenVDM wrote into the cruise's directory:
+
+```bash
+uv run sbe-qa-processing config-from-openvdm --cruise-config /path/to/cruise/cruise_config.json \
+    --site-config configs/site.toml                                            # configs/<CRUISE>.toml
+uv run sbe-qa-processing openvdm --cruise-config /path/to/cruise/cruise_config.json \
+    --site-config configs/site.toml     # the hook's reports, into the cruise's extra directory
 ```
 
 `config-from-openvdm` builds the TOML the same way the hook builds its snapshot, and it

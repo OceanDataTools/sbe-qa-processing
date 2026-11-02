@@ -604,7 +604,8 @@ R2R's. The hook reads the current cruise from OpenVDM's API
 warehouse directory, the CTD transfer's destination, the extra directories and the MD5 summary.
 From OpenVDM 2.17, the vessel's name and contact come from the `vessel` block of `openvdm.yaml`,
 which OpenVDM's installer asks for. With `--site-root` instead of `--openvdm-config`, they come
-from the copy in the cruise's `ovdmConfig.json`.
+from the copy in the cruise's `cruise_config.json` (OpenVDM's per-cruise config file, which its
+`CRUISE_CONFIG_FN` setting names).
 
 1. Install this project with the `openvdm` extra (pyyaml, to read `openvdm.yaml`) somewhere
    OpenVDM's worker can run it (it has its own environment, not OpenVDM's venv), and fetch the
@@ -694,7 +695,7 @@ Installed `openvdm.yaml` files call it, so its arguments keep their names.
 |---|---|---|
 | `TRANSFER` | `CTD` | The collection system transfer's name; in a hook, `{collectionSystemTransferName}` |
 | `--openvdm-config OPENVDM_YAML` | `/opt/openvdm/server/etc/openvdm.yaml` | OpenVDM's settings: its web root (`siteRoot`) and, from OpenVDM 2.17, the `vessel` block. Needs the `openvdm` extra |
-| `--site-root URL` | none | OpenVDM's web root, instead of `--openvdm-config`. The vessel block then comes from the cruise's `ovdmConfig.json` |
+| `--site-root URL` | none | OpenVDM's web root, instead of `--openvdm-config`. The vessel block then comes from the cruise's `cruise_config.json` |
 | `--site-config SITE_TOML` | none | The ship's [site TOML](#site-toml) |
 | `--changed-files FILES` | none | OpenVDM's `{newFiles}` and `{updatedFiles}`; repeatable. When given, the QA runs only if they include CTD files. Use the `--changed-files={newFiles}` form, so an empty list isn't dropped |
 | `--execute-notebook` | off | Run the notebook and save its outputs |

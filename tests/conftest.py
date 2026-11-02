@@ -28,7 +28,9 @@ def pytest_sessionstart(session):
         if not (DATA / archive.name.removesuffix(".tar.xz") / "bagit.txt").exists():
             DATA.mkdir(exist_ok=True)
             with tarfile.open(archive) as tar:
-                tar.extractall(DATA, filter="data")
+                # filter: Python 3.11.4 and later; these archives are this repo's own
+                safe = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+                tar.extractall(DATA, **safe)
 
 
 def r2r_fileset(name: str) -> Path:

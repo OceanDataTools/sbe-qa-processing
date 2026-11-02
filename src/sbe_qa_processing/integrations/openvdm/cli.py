@@ -29,20 +29,32 @@ EXPECTED_ERRORS: tuple[type[Exception], ...] = (OpenVDMError,)
 
 
 def _resolve_openvdm(args: argparse.Namespace):
-    """The current cruise's HookRun from OpenVDM and the site config, and OpenVDM's web root"""
+    """The cruise's HookRun and where the cruise came from: the current cruise from OpenVDM's
+    API, or with --cruise-config any cruise from its cruise_config.json; with the site config
+    """
     from sbe_qa_processing.integrations.openvdm import hook as openvdm
 
-    if args.site_root:
-        # No openvdm.yaml: resolve reads the vessel block from the cruise's cruise_config.json
-        site_root, vessel = args.site_root, None
+    if args.cruise_config and args.site_root:
+        raise OpenVDMError(
+            "--cruise-config and --site-root both say where the cruise is: give one"
+        )
+    if args.cruise_config:
+        # Any cruise, past or current, without the API; the vessel is the file's
+        cruise_config = openvdm.load_cruise_json(args.cruise_config)
+        source, vessel = str(args.cruise_config), None
     else:
-        settings = openvdm.load_openvdm_yaml(args.openvdm_config)
-        site_root = openvdm.site_root_from_config(settings)
-        vessel = openvdm.vessel_settings(settings.get("vessel"), "openvdm.yaml")
-    cruise_config = openvdm.fetch_cruise_config(site_root)
+        if args.site_root:
+            # No openvdm.yaml: resolve reads the vessel block from the cruise's cruise_config.json
+            site_root, vessel = args.site_root, None
+        else:
+            settings = openvdm.load_openvdm_yaml(args.openvdm_config)
+            site_root = openvdm.site_root_from_config(settings)
+            vessel = openvdm.vessel_settings(settings.get("vessel"), "openvdm.yaml")
+        cruise_config = openvdm.fetch_cruise_config(site_root)
+        source = f"OpenVDM ({site_root})"
     site = openvdm.load_site_config(args.site_config)
     run = openvdm.resolve(cruise_config, site, args.transfer, vessel)
-    return run, site_root
+    return run, source
 
 
 def _sources(run) -> str:
@@ -63,7 +75,7 @@ def _openvdm(args: argparse.Namespace) -> int:
         print(f"{args.transfer}: no new or updated CTD files; nothing to do")
         return 0
 
-    run, site_root = _resolve_openvdm(args)
+    run, source = _resolve_openvdm(args)
     if not run.fileset_dir.is_dir():
         print(f"{run.fileset_dir} doesn't exist yet; nothing to do")
         return 0
@@ -74,7 +86,7 @@ def _openvdm(args: argparse.Namespace) -> int:
     run.output_dir.mkdir(parents=True, exist_ok=True)
     # Snapshot what OpenVDM supplied, so the notebook can re-run exactly this assessment
     snapshot = run.output_dir / f"{report_stem(run.config.identifier)}_cruise.toml"
-    snapshot.write_text(openvdm.cruise_toml(run, site_root))
+    snapshot.write_text(openvdm.cruise_toml(run, source))
     result = run_qa(run.fileset_dir, snapshot)
     written = [
         snapshot,
@@ -107,11 +119,11 @@ def _queue_md5_update(args: argparse.Namespace, run, written: list[Path]) -> Non
 def _config_from_openvdm(args: argparse.Namespace) -> int:
     from sbe_qa_processing.integrations.openvdm import hook as openvdm
 
-    run, site_root = _resolve_openvdm(args)
+    run, source = _resolve_openvdm(args)
     print(f"{run.config.cruise_id}: {_sources(run)}", file=sys.stderr)
     for note in run.notes:
         print(f"  note: {note}", file=sys.stderr)
-    return write_cruise_toml(openvdm.cruise_toml(run, site_root), run.config.cruise_id, args)
+    return write_cruise_toml(openvdm.cruise_toml(run, source), run.config.cruise_id, args)
 
 
 def _site_config(args: argparse.Namespace) -> int:
@@ -187,6 +199,16 @@ def _add_openvdm_arguments(parser: argparse.ArgumentParser) -> None:
         help=(
             "OpenVDM's web root URL, instead of --openvdm-config; the vessel settings then come "
             "from the cruise's cruise_config.json"
+        ),
+    )
+    parser.add_argument(
+        "--cruise-config",
+        metavar="CRUISE_CONFIG_JSON",
+        type=Path,
+        help=(
+            "a cruise's cruise_config.json, in its directory: that cruise, past or current, "
+            "without OpenVDM's API; --openvdm-config then only says where OpenVDM is, for the "
+            "MD5 summary"
         ),
     )
     parser.add_argument(

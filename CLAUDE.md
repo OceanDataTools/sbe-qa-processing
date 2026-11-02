@@ -33,14 +33,14 @@ Use uv. Run from the repo root.
   Everything uses `uv sync --locked`, so commit `uv.lock` with `pyproject.toml` changes.
 - The R2R validation filesets (SP2613 169847, RR2605 170644, BH18-18 132368) are committed as `tests/data/<CRUISE>_<FILESET>_ctd.tar.xz`, and `tests/conftest.py` unpacks each into `data/` when it isn't there; a fetched copy stays. To add one, fetch it (`uv run sbe-qa-processing r2r fetch-fileset CRUISE_ID FILESET_ID`) and pack it with `uv run python tests/data/pack_fileset.py data/<CRUISE>_<FILESET>_ctd`. A test that needs a fileset that's neither committed nor fetched skips, and the skip message names the fetch command.
 - Natural Earth map data for offline use: `uv run sbe-qa-processing fetch-map-data`. The tests never download it or depend on it: `conftest` sets `SBE_QA_NO_MAP_DATA` for the session, which makes every layer unavailable (maps without coastlines). A test marked `map_data` uses the data when it's cached and skips otherwise.
-- Run on a fileset: `uv run sbe-qa-processing run data/SP2613_169847_ctd [-c configs/SP2613.toml] -o output/SP2613 [--force] [--execute-notebook]`. Without `-c`, the reports are titled after the fileset directory.
-- Run with R2R's tests and XML: `uv run sbe-qa-processing r2r run configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--force] [--execute-notebook]`
+- Run on a fileset: `uv run sbe-qa-processing run data/SP2613_169847_ctd [-c tests/configs/SP2613.toml] -o output/SP2613 [--force] [--execute-notebook]`. Without `-c`, the reports are titled after the fileset directory.
+- Run with R2R's tests and XML: `uv run sbe-qa-processing r2r run tests/configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--force] [--execute-notebook]`
 - Make a cruise TOML from R2R's catalog API: `uv run sbe-qa-processing r2r config-from-catalog CRUISE_ID FILESET_ID [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`. It uses `integrations.r2r.catalog.config_from_r2r_catalog`. The API has no port coordinates, country or state.
 - Make a cruise TOML from an R2R QA XML: `uv run sbe-qa-processing r2r config-from-qa data/<...>/r2r_qa.2.0.xml [-o configs|-] [--force]`
 - Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [-o configs/site.toml] [--force]`
 - Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL --site-config site.toml [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`.
 
-`data/` (fetched or unpacked filesets) and `output/` (generated reports) are gitignored at the repo root, so `tests/data/` is tracked. `configs/` holds the three validation cruises' R2R cruise TOMLs, `site.example.toml` and `theme.example.toml`.
+`data/` (fetched or unpacked filesets) and `output/` (generated reports) are gitignored at the repo root, so `tests/data/` is tracked. `configs/` is the users' space, the commands' default for cruise and site TOMLs: git ignores everything in it but the `*.example.toml` files, so a ship's `site.toml` or a cruise TOML can't be committed by accident. The three validation cruises' R2R cruise TOMLs are test fixtures, in `tests/configs/` (conftest's `CONFIGS`; `EXAMPLES` is `configs/`).
 
 ## seabirdscientific dependency
 

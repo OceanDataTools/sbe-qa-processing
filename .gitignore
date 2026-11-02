@@ -11,4 +11,7 @@ build/
 /data/
 # Generated reports
 /output/
+# Users' configs (site.toml, cruise TOMLs); only the examples are tracked
+/configs/*
+!/configs/*.example.toml
 .DS_Store

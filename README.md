@@ -506,7 +506,7 @@ says so: run it again with `--force` to fetch it.
 
 An R2R cruise TOML is a [config TOML](#config-toml) with R2R's catalog details added. It must
 have `[cruise] id`, `depart_date` and `arrive_date`. The `r2r config-from-*` commands write it;
-this is `configs/RR2605.toml`, from R2R's QA report:
+this is RR2605's, from R2R's QA report (`tests/configs/RR2605.toml`):
 
 ```toml
 [cruise]

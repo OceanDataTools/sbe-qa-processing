@@ -10,10 +10,12 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from xml.etree import ElementTree
 
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from reportlab.graphics import renderPDF
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4, letter
@@ -174,11 +176,15 @@ def _slug(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_")
 
 
+SVG_RASTER_DPI = 300  # [dots per inch] the TS markers: like vectors on the printed page
+
+
 def _save_svg(figure: Figure, path: Path) -> Path:
     # No date in the metadata, and a fixed salt for matplotlib's clip path IDs (random by
-    # default), so re-running gives identical files
+    # default), so re-running gives identical files. Rasterized artists (the TS diagram's
+    # markers) are drawn at SVG_RASTER_DPI; the rest stays vector
     with matplotlib.rc_context({"svg.hashsalt": "sbe-qa-processing"}):
-        figure.savefig(path, format="svg", metadata={"Date": None})
+        figure.savefig(path, format="svg", metadata={"Date": None}, dpi=SVG_RASTER_DPI)
     plt.close(figure)
     return path
 
@@ -204,17 +210,37 @@ def write_plot_svgs(
     return paths
 
 
+class SVGDrawing(Flowable):
+    """An SVG as a vector drawing scaled to `width` (and at most `max_height`). Its size comes
+    from the SVG's viewBox, as svglib's does; the SVG is parsed only when its page is drawn,
+    and dropped after. Parsed up front, a story with every cast's figures held every drawing
+    until the PDF was built: about 37 MB a cast, most of it the TS diagram's markers
+    """
+
+    def __init__(self, path: Path, width: float, max_height: float | None = None):
+        super().__init__()
+        for _, root in ElementTree.iterparse(path, events=("start",)):
+            break  # the root element: its viewBox
+        *_, svg_width, svg_height = (float(v) for v in root.get("viewBox").split())
+        self.path = path
+        self.factor = width / svg_width
+        if max_height is not None:
+            self.factor = min(self.factor, max_height / svg_height)
+        self.width, self.height = svg_width * self.factor, svg_height * self.factor
+        self.hAlign = "CENTER"
+
+    def wrap(self, available_width: float, available_height: float) -> tuple[float, float]:
+        return self.width, self.height
+
+    def draw(self) -> None:
+        drawing = svg2rlg(str(self.path))
+        drawing.scale(self.factor, self.factor)
+        renderPDF.draw(drawing, self.canv, 0, 0)
+
+
 def _drawing(path: Path, width: float, max_height: float | None = None) -> Flowable:
     """An SVG as a vector drawing scaled to `width` (and at most `max_height`)"""
-    drawing = svg2rlg(str(path))
-    scale = width / drawing.width
-    if max_height is not None:
-        scale = min(scale, max_height / drawing.height)
-    drawing.scale(scale, scale)
-    drawing.width *= scale
-    drawing.height *= scale
-    drawing.hAlign = "CENTER"
-    return drawing
+    return SVGDrawing(path, width, max_height)
 
 
 def escape(text) -> str:

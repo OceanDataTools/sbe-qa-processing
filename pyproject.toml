@@ -5,7 +5,10 @@ description = "Quality assessment reports (PDF, SVG plots, Jupyter notebook) for
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.11"
+# Below 3.15 until numpy, shapely, scipy, pyproj and contourpy have wheels for it: where there's no
+# system Python 3.11-3.14, uv downloads the newest Python, and building those from source fails.
+# CI tests 3.11 to 3.14; raise the bound when it passes on the next release
+requires-python = ">=3.11,<3.15"
 dependencies = [
   # 3.0.0 is the first release with the 911plus status-bit and TS contour-grid fixes
   "seabirdscientific >= 3.0.0",

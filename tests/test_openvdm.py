@@ -582,3 +582,61 @@ def test_open_ended_cruise_ends_today_in_utc(tmp_path, monkeypatch):
     run = openvdm.resolve(response, openvdm.SiteConfig(), "CTD")
     assert run.config.arrive_date == date(2026, 10, 14)
     assert "arrive_date is today, UTC (2026-10-14)" in " ".join(run.notes)
+
+
+# A cruise from its cruise_config.json (--cruise-config) ------------------------------------
+
+
+def exported_cruise(warehouse: Path, name="SP2613") -> Path:
+    """The cruise_config.json OpenVDM writes into a cruise's directory: getCruiseConfig without
+    its warehouse block, the MD5 summary's name at the top level, and the vessel
+    """
+    config = cruise_config(warehouse)
+    md5 = config.pop("warehouseConfig")["md5SummaryFn"]
+    path = warehouse / name / "cruise_config.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({**config, "md5SummaryFn": md5, "vessel": VESSEL}))
+    return path
+
+
+def test_a_cruise_from_its_cruise_config_json(tmp_path):
+    warehouse = tmp_path / "warehouse"
+    loaded = openvdm.load_cruise_json(exported_cruise(warehouse))
+    assert loaded["warehouseConfig"]["shipboardDataWarehouseBaseDir"] == str(warehouse)
+    assert loaded["warehouseConfig"]["cruiseConfigFn"] == "cruise_config.json"
+    from_file = openvdm.resolve(loaded, openvdm.SiteConfig(), "CTD")
+    from_api = openvdm.resolve(cruise_config(warehouse), openvdm.SiteConfig(), "CTD")
+    assert (from_file.fileset_dir, from_file.output_dir) == (
+        from_api.fileset_dir,
+        from_api.output_dir,
+    )
+    assert from_file.config.manifest_path == from_api.config.manifest_path
+    # The vessel the cruise was on, from the same file
+    assert from_file.vessel_source == "cruise_config.json"
+    assert from_file.config.vessel_name == "Robert Gordon Sproul"
+
+
+def test_a_cruise_config_json_that_cant_be_used(tmp_path):
+    with pytest.raises(openvdm.OpenVDMError, match="can't read the cruise config"):
+        openvdm.load_cruise_json(tmp_path / "missing.json")
+    (tmp_path / "SP2613").mkdir()
+    (tmp_path / "SP2613" / "cruise_config.json").write_text('{"cruiseName": "x"}')
+    with pytest.raises(openvdm.OpenVDMError, match="isn't an OpenVDM cruise config"):
+        openvdm.load_cruise_json(tmp_path / "SP2613" / "cruise_config.json")
+    moved = exported_cruise(tmp_path / "copy", name="SP2613-old")
+    with pytest.raises(openvdm.OpenVDMError, match="OpenVDM names a cruise's directory after it"):
+        openvdm.load_cruise_json(moved)
+
+
+def test_config_from_openvdm_with_cruise_config(tmp_path, capsys):
+    path = exported_cruise(tmp_path / "warehouse")
+    assert main(["config-from-openvdm", "--cruise-config", str(path), "-o", "-"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith(f"# Resolved from {path} for CTD\n")
+    assert 'id = "SP2613"' in out and 'vessel_name = "Robert Gordon Sproul"' in out
+
+    args = ["config-from-openvdm", "--cruise-config", str(path), "--site-root", "http://x/"]
+    assert main([*args, "-o", "-"]) == 1
+    assert (
+        "--cruise-config and --site-root both say where the cruise is" in capsys.readouterr().err
+    )

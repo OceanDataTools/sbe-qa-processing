@@ -1,0 +1,52 @@
+# A config TOML for `sbe-qa-processing run FILESET_DIR -c CONFIG_TOML`: the cruise for the
+# reports, the expected area and dates for the integrity checks, and the science checks'
+# limits. Every table and key is optional; leave out what you don't know. The README's
+# "Config TOML" section describes each key. An R2R cruise TOML (`r2r config-from-catalog`)
+# is this file with R2R's IDs, ports and fileset ID added.
+
+[cruise]
+id = "LAKE1"                          # the reports' title and file name prefix; default: the
+                                      # fileset directory's name
+name = "Lake Michigan spring survey"  # under the title
+pi = "A. Scientist"                   # report header details, shown when given
+location = "Southern Lake Michigan"
+vessel_name = "Blue Heron"
+depart_date = 2026-07-09              # expected cast dates: TOML dates, not strings
+arrive_date = 2026-07-10
+
+# Expected cast area [decimal degrees, east and north positive], for the area check and the
+# box on the cast map. westernmost > easternmost is a box across the antimeridian
+[cruise.extent]
+westernmost = -88.0
+easternmost = -87.0
+southernmost = 42.0
+northernmost = 43.0
+
+[fileset]
+# Checksums for a plain directory: "<md5> <path>" lines, paths relative to the manifest's
+# directory, as in OpenVDM's MD5 summary; relative to this file. A bag uses its own
+# manifest-md5.txt
+# manifest = "MD5_Summary.txt"
+
+[provenance]                          # the report contact, in the header
+# contact_institution = "Large Lakes Observatory"
+# contact_email = "ship-tech@example.org"
+
+# The science checks' limits, here at their defaults; ranges are [low, high]
+[thresholds]
+# temperature_difference = 0.01       # [deg C] dual sensors: median |primary - secondary|
+# conductivity_difference = 0.001     # [S/m]
+# salinity_difference = 0.01          # [PSU]
+# dual_sensor_min_pressure = 20.0     # [dbar] dual-sensor differences are taken below this
+# temperature_range = [-2.5, 40.0]    # [deg C] plausible ranges
+# conductivity_range = [0.0, 7.0]     # [S/m]
+# salinity_range = [2.0, 42.0]        # [PSU]; lower it for fresh water
+# pressure_range = [-5.0, 11000.0]    # [dbar]
+# max_spike_percent = 0.5             # [%] scans Wild Edit flags
+# max_lost_scan_percent = 0.1         # [%] scans missing from the modulo counter
+# max_calibration_age_days = 365      # [days] older calibrations warn
+
+# The reports' theme: configs/theme.example.toml shows every setting, which go here as
+# [theme] (and [theme.colors]); they apply over a --theme file's
+# [theme]
+# page_size = "A4"

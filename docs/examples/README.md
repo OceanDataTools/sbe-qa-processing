@@ -9,8 +9,8 @@ conductivity, four stations and a deck test.
 | [`run/`](run/) | `run`, the core QA, as the OpenVDM hook writes it | [the PDF report](run/SP2613_qa_report.pdf), [the cast map](run/SP2613_plots/cast_map.svg) and [Station 1's pressure record](run/SP2613_plots/SP2613_Station1_pressure.svg) |
 | [`r2r/`](r2r/) | `r2r run`, with R2R's CTD tests | [the PDF report](r2r/SP2613_169847_qa_report.pdf), with R2R's certificate after the title block, and [the R2R QA 2.0 XML](r2r/SP2613_169847_qa.2.0.xml) |
 
-Left out for size, or because they hold local paths: the other figures (every one is in the
-PDFs; a station's profiles are 2 MB as SVG) and the notebooks.
+Left out: the other figures, since every one is in the PDFs, and the notebooks, which hold
+local paths.
 
 ![SP2613's casts](run/SP2613_plots/cast_map.svg)
 

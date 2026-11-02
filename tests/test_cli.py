@@ -11,7 +11,7 @@ from conftest import FIXTURES, ROOT
 
 from sbe_qa_processing import __version__
 from sbe_qa_processing.cli import build_parser, main
-from sbe_qa_processing.integrations.r2r import catalog
+from sbe_qa_processing.integrations.r2r import catalog, download
 from sbe_qa_processing.integrations.r2r.download import extract_bag
 
 QA_XML = str(FIXTURES / "SP2613_169847_r2r_qa.2.0.xml")
@@ -181,6 +181,38 @@ def test_extract_bag_from_a_nested_archive(tmp_path):
             tar.addfile(info, io.BytesIO(text.encode()))
     assert extract_bag(archive.getvalue(), tmp_path / "bag") == 2
     assert (tmp_path / "bag/bagit.txt").exists() and (tmp_path / "bag/data/cast.hex").exists()
+
+
+@pytest.mark.parametrize(
+    "data_filter",
+    [
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                not hasattr(tarfile, "data_filter"), reason="Python before 3.11.4"
+            ),
+        ),
+        False,
+    ],
+)
+def test_extract_bag_refuses_a_file_outside_the_bag(data_filter, tmp_path, monkeypatch):
+    """With Python's "data" filter (3.11.4 and later) and without it (Debian 12's 3.11.2)"""
+    monkeypatch.setattr(download, "HAS_DATA_FILTER", data_filter)
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        for name, text in (("bag/bagit.txt", "BagIt\n"), ("bag/../../escaped.txt", "x\n")):
+            info = tarfile.TarInfo(name)
+            info.size = len(text)
+            tar.addfile(info, io.BytesIO(text.encode()))
+    with pytest.raises((ValueError, tarfile.TarError)):
+        extract_bag(archive.getvalue(), tmp_path / "out" / "bag")
+    assert not (tmp_path / "escaped.txt").exists() and not (tmp_path / "out/escaped.txt").exists()
+    normal = io.BytesIO()
+    with tarfile.open(fileobj=normal, mode="w:gz") as tar:
+        info = tarfile.TarInfo("bag/bagit.txt")
+        info.size = 6
+        tar.addfile(info, io.BytesIO(b"BagIt\n"))
+    assert extract_bag(normal.getvalue(), tmp_path / "fine") == 1
 
 
 def test_fetch_map_data(monkeypatch, capsys):

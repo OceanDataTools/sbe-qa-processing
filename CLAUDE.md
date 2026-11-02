@@ -27,7 +27,7 @@ Use uv. Run from the repo root.
 - Lint and format: `uv run ruff check .` and `uv run ruff format --check .` (line length 99).
 - CI (`.github/workflows/ci.yml`) runs on PRs and pushes to `main`:
   - `lint`: ruff;
-  - `test`: the full suite on Linux with Python 3.11–3.14, plus macOS and Windows on 3.13. Nothing is fetched from R2R: the tests unpack the validation filesets committed in `tests/data/`, so every R2R comparison runs everywhere.
+  - `test`: the full suite on Linux with Python 3.11–3.15, plus macOS and Windows on 3.13. Nothing is fetched from R2R: the tests unpack the validation filesets committed in `tests/data/`, so every R2R comparison runs everywhere.
   - `openvdm-contract`: `tests/test_openvdm_contract.py` against OpenVDM's own code, from a checkout of its 2.17 branch with a venv of its requirements: how OpenVDM's post_hooks worker fills INSTALL.md's hook command, its `utils/update_md5_summary.py` as `queue_md5_update` runs it (`tests/openvdm_md5/sitecustomize.py` records the Gearman job instead), and the `cruise_config.json` its cruise export writes (`tests/openvdm_driver.py` runs OpenVDM's code). Locally they use `OPENVDM_SOURCE` (default `../openvdm`, which needs `venv/`) and skip without it. Stand-ins for OpenVDM let `--cruiseID` and the old `ovdmConfig.json` name through, so check hook changes against these.
 
   Everything uses `uv sync --locked`, so commit `uv.lock` with `pyproject.toml` changes.

@@ -24,6 +24,9 @@ from sbe_qa_processing.theme import DEFAULT_THEME, Theme
 
 FIGURE_WIDTH = 7.5  # [in] US letter less margins; the PDF scales figures to its frame
 TS_MAX_POINTS = 4000
+# Consecutive runs of scans a profile line keeps the smallest and largest value of: at most
+# twice this many points a line, the same line at page scale, spikes included
+PROFILE_BINS = 2000
 TS_MIN_SALINITY = 0.01  # [PSU] samples at or below this are left out of the TS diagram
 
 
@@ -71,6 +74,36 @@ def profiles(data: CastData, theme: Theme = DEFAULT_THEME) -> Figure:
         return _profiles(data, theme)
 
 
+def envelope(values: np.ndarray, bins: int = PROFILE_BINS) -> np.ndarray:
+    """Indices of values keeping each of `bins` consecutive runs' smallest and largest value,
+    in order, and a run's first NaN, so a gap still breaks the line. A short line keeps every
+    index
+    """
+    if len(values) <= 2 * bins:
+        return np.arange(len(values))
+    size = -(-len(values) // bins)  # scans a run; the last is padded with NaN
+    runs = np.full(bins * size, np.nan)
+    runs[: len(values)] = values
+    runs = runs.reshape(bins, size)
+    missing = np.isnan(runs)
+    starts = np.arange(bins) * size
+    # Runs of only NaN keep their first scan; pick their min and max from zeros instead
+    filled = np.where(missing.all(axis=1, keepdims=True), 0.0, runs)
+    lowest = np.nanargmin(filled, axis=1)
+    highest = np.nanargmax(filled, axis=1)
+    gaps = np.flatnonzero(missing.any(axis=1))
+    keep = np.concatenate(
+        [starts + lowest, starts + highest, starts[gaps] + missing[gaps].argmax(axis=1)]
+    )
+    return np.unique(keep[keep < len(values)])
+
+
+def _plot_profile(axis, values: np.ndarray, pressure: np.ndarray, **style) -> None:
+    """A downcast line against pressure, thinned to its envelope"""
+    keep = envelope(values)
+    axis.plot(values[keep], pressure[keep], **style)
+
+
 def _profiles(data: CastData, theme: Theme) -> Figure:
     colors = theme.colors
     figure, axes = plt.subplots(1, 4, figsize=(7.5, 9.5), sharey=True, layout="constrained")
@@ -80,11 +113,12 @@ def _profiles(data: CastData, theme: Theme) -> Figure:
         (axes[1], "Salinity [PSU]", data.salinity, data.salinity2),
         (axes[2], "Conductivity [S/m]", data.conductivity, data.conductivity2),
     ):
-        axis.plot(
-            _downcast(data, primary), pressure, color=colors.primary, lw=0.8, label="primary"
+        _plot_profile(
+            axis, _downcast(data, primary), pressure, color=colors.primary, lw=0.8, label="primary"
         )
         if secondary is not None:
-            axis.plot(
+            _plot_profile(
+                axis,
                 _downcast(data, secondary),
                 pressure,
                 color=colors.secondary,
@@ -107,8 +141,9 @@ def _profiles(data: CastData, theme: Theme) -> Figure:
             (data.salinity - data.salinity2, colors.secondary, "ΔS [PSU]"),
         ):
             down = _downcast(data, difference)
-            axis.plot(down, pressure, color=color, lw=0.3, alpha=0.25)
-            axis.plot(_running_median(down, window), pressure, color=color, lw=0.9, label=label)
+            _plot_profile(axis, down, pressure, color=color, lw=0.3, alpha=0.25)
+            median = _running_median(down, window)  # of every scan, then thinned
+            _plot_profile(axis, median, pressure, color=color, lw=0.9, label=label)
         axis.axvline(0, color="k", lw=0.5)
         axis.set_xlim(-0.05, 0.05)
         axis.set_xticks([-0.04, 0, 0.04])

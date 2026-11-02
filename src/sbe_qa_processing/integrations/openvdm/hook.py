@@ -9,8 +9,9 @@ extra directory's destination; and, from OpenVDM 2.17, the cruise bounding box
 bounding box comes from the optional site config.
 
 OpenVDM 2.17 also keeps the vessel's name and contact in ``openvdm.yaml``'s ``vessel`` block,
-which it copies into each cruise's ``ovdmConfig.json``. The hook reads it from ``openvdm.yaml``
-when it has that file, else from the cruise's ``ovdmConfig.json``. The site config's values win;
+which it copies into each cruise's config file (``cruise_config.json``, OpenVDM's
+``CRUISE_CONFIG_FN``, named by the API's ``cruiseConfigFn``). The hook reads it from ``openvdm.yaml``
+when it has that file, else from the cruise's config file. The site config's values win;
 OpenVDM's fill the fields it leaves blank, and `site-config` offers them as defaults. The block's
 R2R IDs aren't used: the hook writes the core reports, not R2R's.
 
@@ -251,7 +252,7 @@ class OpenVDMVessel:
     """The vessel settings OpenVDM has, by SiteConfig field, and where they came from"""
 
     settings: dict[str, str] = field(default_factory=dict)
-    source: str = "none"  # "openvdm.yaml", "ovdmConfig.json" or "none"
+    source: str = "none"  # "openvdm.yaml", the cruise config file's name, or "none"
 
 
 def vessel_settings(block, source: str) -> OpenVDMVessel:
@@ -266,8 +267,13 @@ def vessel_settings(block, source: str) -> OpenVDMVessel:
     return OpenVDMVessel(settings, source)
 
 
+# OpenVDM's name for each cruise's config file (CRUISE_CONFIG_FN in www/app/Core/Config.php.dist,
+# since OpenVDM 2.9; ovdmConfig.json before), when its API doesn't give cruiseConfigFn
+CRUISE_CONFIG_FN = "cruise_config.json"
+
+
 def cruise_vessel(cruise_dir: Path, config_filename: str) -> OpenVDMVessel:
-    """The vessel block saved in the cruise's ovdmConfig.json, if any"""
+    """The vessel block saved in the cruise's config file (cruise_config.json), if any"""
     path = cruise_dir / config_filename
     try:
         block = json.loads(path.read_text()).get("vessel")
@@ -276,7 +282,7 @@ def cruise_vessel(cruise_dir: Path, config_filename: str) -> OpenVDMVessel:
     except (OSError, ValueError, AttributeError) as error:
         logger.warning("can't read the vessel settings from %s: %s", path, error)
         return OpenVDMVessel()
-    return vessel_settings(block, "ovdmConfig.json") if block else OpenVDMVessel()
+    return vessel_settings(block, config_filename) if block else OpenVDMVessel()
 
 
 def fetch_cruise_config(site_root: str) -> dict:
@@ -331,7 +337,7 @@ class HookRun:
     owner: str  # the warehouse user, for file ownership
     extent_source: str  # "openvdm", "site config" or "none"
     vessel_source: str  # where OpenVDM's vessel block came from: "openvdm.yaml",
-    # "ovdmConfig.json" or "none"
+    # the cruise config file's name, or "none"
     # What the config is missing, or had to assume
     notes: list[str] = field(default_factory=list)
 
@@ -343,7 +349,7 @@ def resolve(
     vessel: OpenVDMVessel | None = None,
 ) -> HookRun:
     """The QA configuration and directories for a collection system transfer. vessel is
-    openvdm.yaml's vessel block; without it, the one in the cruise's ovdmConfig.json is used
+    openvdm.yaml's vessel block; without it, the one in the cruise's config file is used
     """
     warehouse = cruise_config["warehouseConfig"]
     cruise_id = cruise_config["cruiseID"]
@@ -390,7 +396,7 @@ def resolve(
             "after today fail the dates check"
         )
     if vessel is None:
-        config_filename = warehouse.get("cruiseConfigFn") or "ovdmConfig.json"
+        config_filename = warehouse.get("cruiseConfigFn") or CRUISE_CONFIG_FN
         vessel = cruise_vessel(cruise_dir, config_filename)
     # The site config's vessel settings win; OpenVDM's fill those it leaves blank
     ship = {}
@@ -472,7 +478,7 @@ def queue_md5_update(install_dir: Path, run: HookRun, written: list[Path]) -> st
         relative = [f.relative_to(run.cruise_dir).as_posix() for f in files]
     except ValueError:
         return f"the reports in {run.output_dir} are outside the cruise directory {run.cruise_dir}"
-    command = [str(python), str(script), "--cruiseID", run.config.cruise_id, *relative]
+    command = [str(python), str(script), "--cruise-id", run.config.cruise_id, *relative]
     try:
         completed = subprocess.run(
             command, capture_output=True, text=True, timeout=MD5_UPDATE_TIMEOUT, check=False

@@ -37,130 +37,17 @@ The `.XMLCON` parser lives here, since seabirdscientific doesn't have one.
 
 ## Setup
 
-It needs [git](https://git-scm.com/) and [uv](https://docs.astral.sh/uv/), and runs on Linux,
-macOS and Windows with Python 3.11 or later. uv uses a Python 3.11+ already on the system, or
-downloads one, so the system Python doesn't matter. Every dependency installs as a prebuilt
-wheel (Linux x86_64 and ARM, macOS, Windows), so no compiler is needed. Install git and uv for
-your platform, then [install the project](#install-the-project).
-
-### Debian / Ubuntu
-
-```bash
-sudo apt update
-sudo apt install -y git curl ca-certificates
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source "$HOME/.local/bin/env"   # puts uv on the PATH; or open a new shell
-```
-
-Debian 12 and 13 and Ubuntu 24.04 have a new enough `python3`. On Ubuntu 22.04 (Python 3.10),
-uv downloads Python itself.
-
-### Alma / Rocky / RHEL
-
-```bash
-sudo dnf install -y git tar     # curl is already installed
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source "$HOME/.local/bin/env"   # puts uv on the PATH; or open a new shell
-```
-
-The default `python3` of RHEL 8 (3.6) and 9 (3.9) is too old, so uv downloads Python itself.
-To use a system Python instead (recommended for a [server install](#server-install-for-the-openvdm-hook)),
-install Python 3.12 from AppStream with `sudo dnf install -y python3.12`. RHEL 10's `python3`
-is 3.12.
-
-### macOS
-
-```bash
-brew install git uv
-```
-
-### Windows
-
-In PowerShell:
-
-```powershell
-winget install --id Git.Git -e
-winget install --id astral-sh.uv -e
-```
-
-Or install uv with its installer:
-`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`. Open a
-new terminal afterwards, so both are on the PATH. The commands below work the same in
-PowerShell, with Windows paths, e.g.
-`uv run sbe-qa-processing run D:\cruises\MYCRUISE\CTD -o output\MYCRUISE`. The core QA and
-the R2R commands run on Windows; the OpenVDM hook runs on the Linux server where OpenVDM is
-installed.
-
-### Install the project
+Requires Python 3.11 to 3.14, [uv](https://docs.astral.sh/uv/) and git. **[INSTALL.md](INSTALL.md)** has
+the commands for macOS, Debian and Ubuntu, RHEL, AlmaLinux and Rocky Linux, and Windows, the
+install for the OpenVDM hook, the map data, and installing for a ship without internet. In
+short:
 
 ```bash
 git clone https://github.com/OceanDataTools/sbe-qa-processing.git
 cd sbe-qa-processing
-uv sync                                    # uv sync --extra openvdm for the OpenVDM hook
-uv run sbe-qa-processing fetch-map-data   # Natural Earth coastlines for the maps (~27 MB, once)
-uv run sbe-qa-processing --help
-```
-
-`uv sync` makes a virtual environment in `.venv` with the exact versions in `uv.lock`. It also
-installs the dev group: pytest, ruff, and `nbclient` and `ipykernel`, which `--execute-notebook`
-needs. `uv sync --no-dev` leaves those out. `uv run` runs a command in that environment; the
-command itself is `.venv/bin/sbe-qa-processing` (`.venv\Scripts\sbe-qa-processing.exe` on
-Windows), which works without uv on the PATH.
-
-To check the install against R2R's own reports, run the tests:
-
-```bash
+uv sync
 uv run pytest
 ```
-
-The three R2R validation filesets (SP2613, RR2605 and BH18-18, about 3 MB compressed) are
-committed in `tests/data/`, and the tests unpack them into `data/`, so nothing is fetched from
-R2R. CI (`.github/workflows/ci.yml`) runs ruff and the tests on every PR and push to `main`, on
-Linux with Python 3.11–3.14 and on macOS and Windows.
-
-To update, pull and sync again: `git pull && uv sync` (with the same options as before).
-
-### Server install for the OpenVDM hook
-
-On the Linux server where OpenVDM runs, install into a shared directory such as
-`/opt/sbe-qa-processing`, which the hook example under [OpenVDM](#openvdm) uses:
-
-```bash
-sudo mkdir -p /opt/sbe-qa-processing
-sudo chown "$USER": /opt/sbe-qa-processing
-git clone https://github.com/OceanDataTools/sbe-qa-processing.git /opt/sbe-qa-processing
-cd /opt/sbe-qa-processing
-uv sync --no-dev --extra openvdm --no-managed-python      # a system Python 3.11+
-sudo /opt/sbe-qa-processing/.venv/bin/sbe-qa-processing fetch-map-data
-```
-
-Two things depend on the user the hook runs as, which is the user OpenVDM's transfer workers
-run as (check OpenVDM's supervisor configuration; when it's root, the hook also gives the
-reports to the warehouse user):
-- **Python.** The environment links to the Python it was made with. A uv-downloaded Python
-  lives in the installing user's home (`~/.local/share/uv/python`), which other users may not
-  be able to read. `--no-managed-python` makes uv use a system Python 3.11+ instead: Debian
-  12 and 13's and Ubuntu 24.04's `python3`, or `python3.12` on Alma/Rocky/RHEL 8 and 9 after
-  `sudo dnf install -y python3.12`. Where there's none (Ubuntu 22.04), leave the option out
-  and keep uv's Python in the shared directory instead, by setting
-  `UV_PYTHON_INSTALL_DIR=/opt/sbe-qa-processing/python` for this and every later `uv sync`.
-- **Map data.** cartopy caches the maps in the home of the user who downloads them
-  (`~/.local/share/cartopy`). Run `fetch-map-data` as the hook's user, e.g. with `sudo` as
-  above when the workers run as root, or `sudo -u <user>` otherwise. `fetch-map-data` prints
-  where it put them.
-
-Leave out `--no-dev` to use the hook's `--execute-notebook`.
-
-### About the dependencies
-
-seabirdscientific comes from PyPI (3.0.0 or later). `uv sync` installs the exact version pinned
-in `uv.lock`. `pip install git+https://github.com/OceanDataTools/sbe-qa-processing.git` also
-works, and takes the newest seabirdscientific release that satisfies the version range.
-
-The maps use [cartopy](https://scitools.org.uk/cartopy/) with Natural Earth 1:10m land, lakes
-and coastlines, and a 1:110m world inset. cartopy downloads them on first use; run `fetch-map-data`
-beforehand to work offline (e.g. at sea). Without the data, maps are drawn without
-coastlines.
 
 ## Usage
 
@@ -172,6 +59,10 @@ uv run sbe-qa-processing run path/to/fileset -c my_config.toml -o output/MYCASTS
 Without `-c`, the reports are titled after the fileset directory, and the integrity checks
 that need an expected area or dates are n/a. A [config TOML](#config-toml) sets those, the
 thresholds and the report's details; every field is optional.
+
+**[COOKBOOK.md](COOKBOOK.md)** walks through whole workflows with real output: a directory of
+Seasave files (a quick look, a config TOML, a changed threshold, the notebook, Python), and an
+R2R fileset (downloading it, its cruise TOML, R2R's assessment, comparing with R2R's report).
 
 ### Command line
 
@@ -601,84 +492,83 @@ filesets.
 
 ## OpenVDM
 
-[OpenVDM](https://github.com/OceanDataTools/openvdm) can run the QA after each CTD transfer, as a
-`postCollectionSystemTransfer` hook. It writes the core reports (PDF, SVG plots, notebook), not
-R2R's. The hook reads the current cruise from OpenVDM's API
-(`api/warehouse/getCruiseConfig`): cruise ID, name, PI, location, dates, the cruise extent, the
-warehouse directory, the CTD transfer's destination, the extra directories and the MD5 summary.
-From OpenVDM 2.17, the vessel's name and contact come from the `vessel` block of `openvdm.yaml`,
-which OpenVDM's installer asks for. With `--site-root` instead of `--openvdm-config`, they come
-from the copy in the cruise's `cruise_config.json` (OpenVDM's per-cruise config file, which its
-`CRUISE_CONFIG_FN` setting names).
+On a ship running [OpenVDM](https://github.com/OceanDataTools/openvdm), the QA runs:
+- **During the cruise,** from OpenVDM's `postCollectionSystemTransfer` hook, after each transfer
+  of the CTD's collection system that brings new or updated CTD files: a missing file, a sensor
+  past its calibration or a cast outside the expected area shows while there's time to act.
+- **Afterwards, by hand:** any earlier cruise, from the `cruise_config.json` in its directory
+  ([A past cruise](#a-past-cruise)).
 
-1. Install this project with the `openvdm` extra (pyyaml, to read `openvdm.yaml`) somewhere
-   OpenVDM's worker can run it (it has its own environment, not OpenVDM's venv), and fetch the
-   map data: `uv sync --extra openvdm && uv run sbe-qa-processing fetch-map-data`.
-2. In OpenVDM, add an extra directory for the reports (Configuration > Extra Directories), named
-   `CTD_QA` by default, e.g. with destination `Products/CTD_QA`.
-3. Write the ship's site config once, for what OpenVDM doesn't store: the reports' extra
-   directory, an expected cruise area and QA thresholds, and, for OpenVDM before 2.17, the
-   vessel name and the report contact. It prompts for each field and works offline. Fields
-   already in `openvdm.yaml`'s `vessel` block are offered as the defaults; the site config's
-   values win when the hook runs, and `openvdm.yaml` fills any it leaves blank:
+Each run writes the core reports (PDF, SVG plots, notebook), not R2R's, into an OpenVDM extra
+directory. **Setting it up** (the install, the extra directory, the ship's site TOML and the
+hook in `openvdm.yaml`) is in [INSTALL.md](INSTALL.md#install-for-the-openvdm-hook).
 
-   ```bash
-   uv run sbe-qa-processing site-config   # writes configs/site.toml
-   ```
+### Where its values come from
 
-   It reads `openvdm.yaml` from `/opt/openvdm/server/etc/`. If OpenVDM is installed elsewhere
-   (the installer's `INSTALL_ROOT`), pass `--openvdm-config <INSTALL_ROOT>/openvdm/server/etc/openvdm.yaml`.
+- **The cruise,** from OpenVDM's API (`api/warehouse/getCruiseConfig`): its ID, name, PI,
+  location and dates, its extent (`cruiseExtent`, OpenVDM 2.17), the warehouse directory, the
+  transfer's destination, the extra directories and the MD5 summary. For a past cruise, from its
+  `cruise_config.json` instead (OpenVDM's per-cruise config file, which its `CRUISE_CONFIG_FN`
+  setting names).
+- **The vessel's name and contact,** from the site TOML, or where it leaves them blank, from
+  `openvdm.yaml`'s `vessel` block (OpenVDM 2.17); a disagreement is noted. With `--site-root` or
+  `--cruise-config` there's no `openvdm.yaml` to read, so they come from the cruise's
+  `cruise_config.json`, the vessel the cruise was on.
+- **The expected area,** from OpenVDM's `cruiseExtent`, which `build_cruise_tracks.py` sets
+  from the ship's track each time the data dashboard runs, else the site TOML's `[extent]`.
+  Without either, the area check is n/a.
+- **The science checks' limits and the reports' theme,** from the site TOML's `[thresholds]`
+  and `[theme]`.
 
-   Run it again with `--force` to change the file; its current values are the defaults. QA
-   thresholds (e.g. for fresh water) are edited by hand under `[thresholds]`.
-   `configs/site.example.toml` shows every field. A site config from before the hook dropped
-   R2R still works: its R2R settings are ignored, with a note, and rewriting it with
-   `site-config --force` drops them.
-4. Add the hook to OpenVDM's `openvdm.yaml`, `/opt/openvdm/server/etc/openvdm.yaml` by default.
-   `--openvdm-config` tells the hook where that file is, since OpenVDM may be installed outside
-   `/opt`:
+### What the hook does
 
-```yaml
-postHookCommands:
-    postCollectionSystemTransfer:
-        - collectionSystemTransferName: CTD
-          commandList:
-          - name: "SBE 9 QA report"
-            command:
-            - /opt/sbe-qa-processing/.venv/bin/sbe-qa-processing
-            - openvdm
-            - "{collectionSystemTransferName}"
-            - "--openvdm-config=/opt/openvdm/server/etc/openvdm.yaml"  # <INSTALL_ROOT>/openvdm/...
-            - "--site-config=/opt/sbe-qa-processing/configs/site.toml"
-            - "--changed-files={newFiles}"
-            - "--changed-files={updatedFiles}"
-```
+- **Skips** a transfer whose new or updated files include no `.hex/.dat`, `.XMLCON/.con`, `.hdr`
+  or `.bl` (`--changed-files`).
+- **Reads** every cast in the transfer's directory, checks its time against the cruise's dates
+  (an open-ended cruise ends today, UTC), and **checks the checksums** against OpenVDM's MD5
+  summary. Files
+  changed after the summary was written count as pending, not failures, since OpenVDM updates
+  the summary in parallel with the hook.
+- **Writes into the extra directory,** replacing earlier ones: `<cruise>_qa_report.pdf`,
+  `<cruise>_plots/`, `<cruise>_qa.ipynb`, and `<cruise>_cruise.toml`, a snapshot of what OpenVDM
+  and the site TOML supplied, which the notebook re-runs from. Run as root, it gives them to the
+  warehouse user.
+- **Adds those files to the cruise's MD5 summary,** with OpenVDM's
+  `utils/update_md5_summary.py` (OpenVDM 2.16.1 or later), found from `--openvdm-config`'s
+  install directory, or `/opt/openvdm` with `--site-root`. If that fails, the hook logs a warning
+  and still succeeds, and the reports reach the summary at its next full rebuild.
+- **Takes the extent** as above. A cast near the newest end of the track can fall just outside
+  OpenVDM's extent until the next dashboard update; the next hook run then passes it. A box
+  across the antimeridian has westernmost > easternmost, as in R2R's reports.
+- **Fails in one line,** which OpenVDM shows as the hook's message.
+- **Accepts and ignores `--fileset-id`,** which older hook commands pass. Before this version
+  the hook also wrote R2R's QA XML and named its reports `<cruise>_ctd_...`; those older files
+  stay in the extra directory until removed by hand. To check a cruise against R2R's tests, use
+  `r2r run` with a cruise TOML from R2R's catalog.
 
-The hook:
-- **skips** transfers whose new or updated files include no `.hex/.dat`, `.XMLCON/.con`, `.hdr`
-  or `.bl` (use the `--changed-files={newFiles}` form, so an empty list isn't dropped);
-- writes the PDF, SVG plots and notebook into the extra directory as `<cruise>_qa_report.pdf`,
-  `<cruise>_plots/` and `<cruise>_qa.ipynb`, plus `<cruise>_cruise.toml`, a snapshot of what
-  OpenVDM supplied that the notebook re-runs from, and gives them to the warehouse user when run
-  as root;
-- adds those files to the cruise's MD5 summary, with OpenVDM's `utils/update_md5_summary.py`
-  (OpenVDM 2.16.1 or later), found from `--openvdm-config`'s install directory, or
-  `/opt/openvdm` with `--site-root`. If that fails (e.g. an older OpenVDM), the hook logs a
-  warning and still succeeds, and the reports reach the summary at its next full rebuild;
-- checks checksums against OpenVDM's MD5 summary. Files changed after the summary was written
-  count as pending, not failures, since OpenVDM updates the summary in parallel with the hook;
-- takes the cruise extent from OpenVDM's `cruiseExtent`, else from the site config's `[extent]`;
-  without either, the area check is n/a. OpenVDM 2.17 stores the extent, which
-  `build_cruise_tracks.py` sets from the ship's track each time the data dashboard runs. A cast
-  near the newest end of the track can fall just outside it until the next dashboard update;
-  the next hook run then passes it. A box across the antimeridian has westernmost > easternmost,
-  as in R2R's reports;
-- accepts and ignores `--fileset-id`, which older hook commands pass;
-- exits non-zero with a message on failure, which OpenVDM shows.
+### Troubleshooting
 
-Before this version, the hook also wrote R2R's QA XML and named its reports
-`<cruise>_ctd_...`. Those older files stay in the extra directory until removed by hand. To
-check a cruise against R2R's tests, use `r2r run` with a cruise TOML from R2R's catalog.
+OpenVDM logs the hook's output in `/var/log/openvdm/post_hooks.log`. To see it directly, run the
+hook's command by hand, as root, without `--changed-files`
+([INSTALL.md step 5](INSTALL.md#5-try-it)). Each run prints the cruise it found, what it assumed
+(`note:` lines), the QA summary and the files it wrote.
+
+| Message | Meaning |
+|---|---|
+| `CTD: no new or updated CTD files; nothing to do` | None of the transfer's new or updated files is a CTD file. By hand, leave `--changed-files` out |
+| `... doesn't exist yet; nothing to do` | The transfer hasn't brought any files yet |
+| `Casts warn (0): no .hex, .dat or .hdr files in ...` | The transfer's directory has no casts: check `TRANSFER` is the CTD's collection system transfer |
+| `OpenVDM has no current cruise` | Start a cruise in OpenVDM, or use `--cruise-config` for a past one |
+| `no collection system transfer named ...` | `TRANSFER` isn't a transfer's name in OpenVDM (Configuration > Collection System Transfers) |
+| `no extra directory named 'CTD_QA'` | Add it in OpenVDM (Configuration > Extra Directories), or set the site TOML's `[openvdm] output_extra_directory` |
+| `no openvdm.yaml at ...` | OpenVDM is installed elsewhere: give `--openvdm-config` |
+| `couldn't reach OpenVDM (...)` | OpenVDM's web server isn't answering at `openvdm.yaml`'s `siteRoot` (or `--site-root`) |
+| `can't read the cruise config ...`, `... isn't an OpenVDM cruise config`, `... OpenVDM names a cruise's directory after it` | `--cruise-config` needs the `cruise_config.json` in the cruise's own directory, named after the cruise |
+| `the reports aren't in OpenVDM's MD5 summary: ...` | OpenVDM's `update_md5_summary.py` is missing (OpenVDM before 2.16.1) or failed. The reports are written all the same |
+| `note: OpenVDM has no cruise extent; using the site config's [extent]` | OpenVDM before 2.17, or `build_cruise_tracks.py` hasn't run yet |
+| `note: no cruise extent: ...` | Neither OpenVDM nor the site TOML has an extent, so the area check is n/a |
+| `note: OpenVDM's cruise has no end date; arrive_date is today, UTC ...` | An open-ended cruise: casts after today fail the dates check |
+| `note: vessel_name is ... in the site config and ... in OpenVDM's ...` | The site TOML and OpenVDM disagree; the site TOML's value is used |
 
 ### OpenVDM commands
 
@@ -726,6 +616,29 @@ without running the QA, and reports what's missing or assumed. `TRANSFER`, `--op
 | `-o`, `--output OUTPUT_DIR` | `configs` | Directory for `<CRUISE_ID>.toml`, or `-` for stdout |
 | `--force` | off | Replace an existing TOML |
 
+#### A past cruise
+
+OpenVDM's API gives only the current cruise. For an earlier one, point `--cruise-config` at the
+`cruise_config.json` OpenVDM wrote into that cruise's directory; the cruise and its vessel come
+from it:
+
+```bash
+# Rebuild a past cruise's reports in its CTD_QA extra directory, as the hook would have
+sudo /opt/sbe-qa-processing/.venv/bin/sbe-qa-processing openvdm CTD \
+    --cruise-config /data/CruiseData/SP2613/cruise_config.json \
+    --site-config=/opt/sbe-qa-processing/configs/site.toml
+# Or keep it as a config TOML, and run the QA anywhere
+uv run sbe-qa-processing config-from-openvdm CTD --site-config configs/site.toml \
+    --cruise-config /data/CruiseData/SP2613/cruise_config.json                 # configs/SP2613.toml
+uv run sbe-qa-processing run /data/CruiseData/SP2613/CTD -c configs/SP2613.toml -o output/SP2613
+```
+
+`config-from-openvdm` builds the TOML the same way the hook builds its snapshot, and reports
+what's missing or assumed: where the extent came from, an open-ended cruise's end date (set to
+today) and site TOML settings that are no longer used. The same, without `--cruise-config`,
+reviews the current cruise's config before relying on the hook. The hook rebuilds it on every
+run, since OpenVDM's cruise details and extent change during a cruise.
+
 #### `site-config`
 
 ```text
@@ -761,32 +674,36 @@ R2R settings from older site TOMLs (`[vessel] id`, `[cruise] operator_id` and
 `[thresholds] yellow_minimum_percent`) are ignored with a note. Any other unknown key is an
 error, as in a config TOML.
 
-### Reviewing the hook's config
-
-To review the config TOML before relying on the hook, or to run the QA by hand, write it without
-running the QA:
+## Development
 
 ```bash
-uv run sbe-qa-processing config-from-openvdm --site-config configs/site.toml \
-    --openvdm-config /opt/openvdm/server/etc/openvdm.yaml                      # configs/<CRUISE>.toml
-uv run sbe-qa-processing run /path/to/cruise/CTD -c configs/<CRUISE>.toml -o output/<CRUISE>
+uv run pytest                                   # all tests, about a minute
+uv run pytest tests/test_cli.py::test_version   # one test
+uv run ruff check . && uv run ruff format --check .
 ```
 
-For an earlier cruise, which OpenVDM's API no longer gives, point `--cruise-config` at the
-`cruise_config.json` OpenVDM wrote into the cruise's directory:
+CI (`.github/workflows/ci.yml`) runs Ruff and the tests on Linux (Python 3.11 to 3.14), macOS and
+Windows on every pull request and push to `main`. It downloads nothing: the tests unpack the
+three R2R validation filesets committed in `tests/data/`, so every comparison with R2R's reports
+runs on every OS, and draw maps without Natural Earth (`SBE_QA_NO_MAP_DATA`); with
+`fetch-map-data` run, the test marked `map_data` uses the real layers.
+
+`tests/test_openvdm_contract.py` checks the OpenVDM hook against OpenVDM's own code rather than
+stand-ins: how OpenVDM runs the hook command INSTALL.md documents, its
+`update_md5_summary.py`, and the cruise config file it writes. It needs a checkout of OpenVDM's
+`2.17` branch with a `venv` of its requirements, at `OPENVDM_SOURCE` (default `../openvdm`), and
+skips without one; CI's "OpenVDM contract" job clones it:
 
 ```bash
-uv run sbe-qa-processing config-from-openvdm --cruise-config /path/to/cruise/cruise_config.json \
-    --site-config configs/site.toml                                            # configs/<CRUISE>.toml
-uv run sbe-qa-processing openvdm --cruise-config /path/to/cruise/cruise_config.json \
-    --site-config configs/site.toml     # the hook's reports, into the cruise's extra directory
+git clone --branch 2.17 https://github.com/OceanDataTools/openvdm.git ../openvdm
+uv venv --python 3.12 ../openvdm/venv && VIRTUAL_ENV=../openvdm/venv uv pip install -r ../openvdm/requirements.txt
+uv run pytest tests/test_openvdm_contract.py
 ```
 
-`config-from-openvdm` builds the TOML the same way the hook builds its snapshot, and it
-reports what's missing or assumed: where the cruise extent came from, an open-ended cruise's
-end date (set to today) and site config settings that are no longer used. The hook still
-rebuilds the TOML on every run, since OpenVDM's cruise details and extent change during a
-cruise.
+When a change alters the reports, rebuild [docs/examples](docs/examples/) with the commands in its
+README. `tests/test_docs.py` parses every command in the README's, INSTALL.md's and COOKBOOK's
+bash blocks, and the hook in INSTALL.md, with the CLI's parser; `tests/test_examples.py` checks
+that the example TOMLs in `configs/` show every key.
 
 ## seabirdscientific version
 

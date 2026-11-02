@@ -1,6 +1,6 @@
-"""The docs' commands stay true to the CLI: the README's openvdm.yaml hook and every
-sbe-qa-processing command in the docs' shell examples parse with the CLI's own parser, so a
-renamed or removed option fails here rather than leaving the docs stale.
+"""The docs' commands stay true to the CLI: the openvdm.yaml hook, which only INSTALL.md shows,
+and every sbe-qa-processing command in the docs' shell examples parse with the CLI's own parser,
+so a renamed or removed option fails here rather than leaving the docs stale.
 """
 
 import re
@@ -12,7 +12,7 @@ from conftest import ROOT
 
 from sbe_qa_processing.cli import build_parser
 
-DOCS = ("README.md", "COOKBOOK.md")
+DOCS = ("README.md", "INSTALL.md", "COOKBOOK.md")
 INSTALLED = "/opt/sbe-qa-processing/.venv/bin/sbe-qa-processing"
 # OpenVDM's placeholders, as it fills them in
 PLACEHOLDERS = {
@@ -28,8 +28,18 @@ def blocks(name: str, language: str) -> list[str]:
     return re.findall(rf"```{language}\n(.*?)```", (ROOT / name).read_text(), re.DOTALL)
 
 
-def test_the_readme_hook_parses():
-    (block,) = [b for b in blocks("README.md", "yaml") if "postHookCommands" in b]
+def hook_blocks(name: str) -> list[str]:
+    return [block for block in blocks(name, "yaml") if "postHookCommands" in block]
+
+
+def test_only_install_md_shows_the_hook():
+    """The openvdm.yaml hook has one home; the README and COOKBOOK link to it"""
+    assert len(hook_blocks("INSTALL.md")) == 1
+    assert hook_blocks("README.md") == hook_blocks("COOKBOOK.md") == []
+
+
+def test_the_hook_parses():
+    (block,) = hook_blocks("INSTALL.md")
     (transfer,) = yaml.safe_load(block)["postHookCommands"]["postCollectionSystemTransfer"]
     command = transfer["commandList"][0]["command"]
     assert command[0] == INSTALLED

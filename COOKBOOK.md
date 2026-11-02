@@ -2,8 +2,8 @@
 
 Worked examples, end to end: assessing **a directory of Seasave files** (a ship's own CTD
 data), and assessing **an R2R fileset** (downloaded from R2R, with R2R's tests and QA 2.0
-XML). Every command and output here comes from a real run. The [README](README.md) covers
-installing and lists every command, argument and TOML key.
+XML). Every command and output here comes from a real run. [INSTALL.md](INSTALL.md) covers
+installing; the [README](README.md) lists every command, argument and TOML key.
 
 The examples call `sbe-qa-processing`. From a clone, that's `uv run sbe-qa-processing`; from an
 install like the OpenVDM hook's, `/opt/sbe-qa-processing/.venv/bin/sbe-qa-processing`.
@@ -66,7 +66,8 @@ give the cruise a config.
 ### A proper run, with a config TOML
 
 A config TOML names the cruise, gives the expected area and dates for the integrity checks, and
-any limits that differ from the defaults. Every key is optional:
+any limits that differ from the defaults. Every key is optional; `configs/config.example.toml`
+shows them all, each threshold at its default:
 
 ```toml
 # SP2613.toml
@@ -339,9 +340,11 @@ sbe-qa-processing run data/SP2613_169847_ctd -c configs/SP2613.toml -o output/SP
 
 ## An OpenVDM cruise, by hand
 
-On a ship running OpenVDM, the hook runs the QA after each CTD transfer (README,
-[OpenVDM](README.md#openvdm)). To run it yourself, give the hook's command without
-`--changed-files`:
+On a ship running OpenVDM, the hook runs the QA after each CTD transfer
+([INSTALL.md](INSTALL.md#install-for-the-openvdm-hook) sets it up; the README's
+[OpenVDM](README.md#openvdm) section says what it does, and its
+[Troubleshooting](README.md#troubleshooting) table what its messages mean). To run it yourself,
+give the hook's command without `--changed-files`:
 
 ```bash
 sudo /opt/sbe-qa-processing/.venv/bin/sbe-qa-processing openvdm CTD \
@@ -354,4 +357,14 @@ without touching OpenVDM's extra directory:
 ```bash
 sbe-qa-processing config-from-openvdm CTD --site-config configs/site.toml   # configs/<CRUISE_ID>.toml
 sbe-qa-processing run /path/to/cruise/CTD -c configs/<CRUISE_ID>.toml -o output/<CRUISE_ID>
+```
+
+Both take OpenVDM's current cruise. For an earlier one, add `--cruise-config` with the
+`cruise_config.json` OpenVDM wrote into that cruise's directory; the cruise and its vessel come
+from it rather than OpenVDM's API ([README](README.md#a-past-cruise)):
+
+```bash
+sudo /opt/sbe-qa-processing/.venv/bin/sbe-qa-processing openvdm CTD \
+    --cruise-config /data/CruiseData/SP2613/cruise_config.json \
+    --site-config=/opt/sbe-qa-processing/configs/site.toml
 ```

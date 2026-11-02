@@ -1,5 +1,5 @@
 """The OpenVDM hook against OpenVDM's own code, not stand-ins we wrote: how OpenVDM runs the hook
-command the README documents, its utils/update_md5_summary.py as the hook calls it, and the
+command INSTALL.md documents, its utils/update_md5_summary.py as the hook calls it, and the
 cruise config file it writes for each cruise. Stand-ins for these let --cruiseID (which no
 release of the script accepts) and the old ovdmConfig.json name through. Run with a checkout of
 OpenVDM's 2.17 branch with a venv of its requirements (OPENVDM_SOURCE, default ../openvdm), as
@@ -60,11 +60,11 @@ def api_cruise_config(base_dir: Path) -> dict:
     return config
 
 
-# The hook the README documents ---------------------------------------------------------------
+# The hook INSTALL.md documents ---------------------------------------------------------------
 
 
-def readme_hooks() -> dict:
-    text = (ROOT / "README.md").read_text()
+def install_md_hooks() -> dict:
+    text = (ROOT / "INSTALL.md").read_text()
     (block,) = [
         b for b in re.findall(r"```yaml\n(.*?)```", text, re.DOTALL) if "postHookCommands" in b
     ]
@@ -72,10 +72,10 @@ def readme_hooks() -> dict:
 
 
 def test_openvdm_runs_the_documented_hook(tmp_path):
-    """OpenVDM's post_hooks worker fills the README's hook command, and our CLI parses it"""
+    """OpenVDM's post_hooks worker fills INSTALL.md's hook command, and our CLI parses it"""
     settings = yaml.safe_load((SOURCE / "server/etc/openvdm.yaml.dist").read_text())
     assert "postCollectionSystemTransfer" in settings["postHookCommands"]
-    settings["postHookCommands"]["postCollectionSystemTransfer"] = readme_hooks()[
+    settings["postHookCommands"]["postCollectionSystemTransfer"] = install_md_hooks()[
         "postCollectionSystemTransfer"
     ]
     config = tmp_path / "openvdm.yaml"

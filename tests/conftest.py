@@ -13,7 +13,10 @@ warnings.filterwarnings("ignore", "The seawater library is deprecated")
 ROOT = Path(__file__).parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
 DATA = ROOT / "data"
-CONFIGS = ROOT / "configs"
+# The validation cruises' R2R cruise TOMLs, test fixtures; configs/ is the users' (and its
+# examples')
+CONFIGS = Path(__file__).parent / "configs"
+EXAMPLES = ROOT / "configs"
 # The R2R validation filesets, committed (tests/data/pack_fileset.py packs them) and unpacked
 # into data/ when they aren't there, so the tests and CI need nothing from R2R
 COMMITTED = Path(__file__).parent / "data"

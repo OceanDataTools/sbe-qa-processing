@@ -285,6 +285,43 @@ def cruise_vessel(cruise_dir: Path, config_filename: str) -> OpenVDMVessel:
     return vessel_settings(block, config_filename) if block else OpenVDMVessel()
 
 
+def load_cruise_json(path: Path | str) -> dict:
+    """A cruise's config from the cruise_config.json OpenVDM writes into its directory, in the
+    API's shape: any cruise, past or current, without OpenVDM's API (--cruise-config). The file
+    is getCruiseConfig without its warehouse block, which is rebuilt from where the file is
+    """
+    path = Path(path)
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as error:
+        raise OpenVDMError(f"can't read the cruise config {path}: {error}") from None
+    if not isinstance(data, dict) or not data.get("cruiseID"):
+        raise OpenVDMError(f"{path} isn't an OpenVDM cruise config: it has no cruiseID")
+    cruise_dir = path.absolute().parent
+    if cruise_dir.name != data["cruiseID"]:
+        raise OpenVDMError(
+            f"{cruise_dir} is named {cruise_dir.name!r}, but its cruise is "
+            f"{data['cruiseID']!r}: OpenVDM names a cruise's directory after it"
+        )
+    warehouse = {
+        "shipboardDataWarehouseBaseDir": str(cruise_dir.parent),
+        "shipboardDataWarehouseUsername": _owner_of(cruise_dir),
+        "md5SummaryFn": data.get("md5SummaryFn", ""),
+        "cruiseConfigFn": path.name,
+    }
+    return {**data, "warehouseConfig": warehouse}
+
+
+def _owner_of(path: Path) -> str:
+    """The user owning path, to give the reports to; '' where that can't be told (Windows)"""
+    try:
+        import pwd
+
+        return pwd.getpwuid(path.stat().st_uid).pw_name
+    except (ImportError, KeyError, OSError):
+        return ""
+
+
 def fetch_cruise_config(site_root: str) -> dict:
     """The current cruise's configuration from OpenVDM's API"""
     url = f"{site_root}api/warehouse/getCruiseConfig"
@@ -436,9 +473,11 @@ def resolve(
     )
 
 
-def cruise_toml(run: HookRun, site_root: str) -> str:
-    """The resolved config TOML, headed by where it came from and what it's missing"""
-    header = [f"# Resolved from OpenVDM ({site_root}) for {run.transfer}"]
+def cruise_toml(run: HookRun, source: str) -> str:
+    """The resolved config TOML, headed by where the cruise came from (e.g. "OpenVDM
+    (http://.../)" or a cruise_config.json) and what it's missing
+    """
+    header = [f"# Resolved from {source} for {run.transfer}"]
     header += [f"# Note: {note}" for note in run.notes]
     return "\n".join(header) + "\n" + config_to_toml(run.config)
 

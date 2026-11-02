@@ -1,6 +1,7 @@
 """The PDF report's figures: parsed only when their page is drawn, at svglib's size."""
 
 import matplotlib.pyplot as plt
+import numpy as np
 from conftest import r2r_fileset
 from svglib.svglib import svg2rlg
 
@@ -28,3 +29,19 @@ def test_the_report_parses_each_figure_once_as_its_page_is_drawn(tmp_path, monke
     pdf_report.write_pdf(result, tmp_path / "report.pdf", tmp_path / "plots")
     svgs = sorted(str(p) for p in (tmp_path / "plots").glob("*.svg"))
     assert sorted(parsed) == svgs  # every figure, each once
+
+
+def test_a_profile_line_keeps_its_envelope():
+    from sbe_qa_processing.plots import envelope
+
+    short = np.arange(100.0)
+    assert (envelope(short, bins=50) == np.arange(100)).all()  # nothing to thin
+
+    values = np.sin(np.linspace(0, 20, 100_000))
+    values[54_321] = 9.0  # a one-scan spike
+    values[70_000:70_010] = np.nan  # a gap
+    keep = envelope(values, bins=1000)
+    assert len(keep) <= 2 * 1000 + 1 and (np.diff(keep) > 0).all()  # in order, thinned
+    assert 54_321 in keep  # the spike
+    assert np.isnan(values[keep]).any()  # the gap still breaks the line
+    assert np.nanmax(values[keep]) == 9.0 and np.nanmin(values[keep]) == np.nanmin(values)

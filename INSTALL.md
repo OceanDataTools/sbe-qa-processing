@@ -1,8 +1,8 @@
 # Installing sbe-qa-processing
 
-sbe-qa-processing needs **Python 3.11 to 3.14**, [uv](https://docs.astral.sh/uv/) and git. uv
-uses a Python in that range already on the system, or downloads 3.14, so an older system Python
-doesn't matter. (3.15 waits for numpy, shapely, scipy and pyproj wheels.) Every dependency (seabirdscientific, gsw, numpy, matplotlib, cartopy, shapely,
+sbe-qa-processing needs **Python 3.11 or later**, [uv](https://docs.astral.sh/uv/) and git. uv
+uses a Python 3.11+ already on the system, or downloads the newest, so an older system Python
+doesn't matter. Every dependency (seabirdscientific, gsw, numpy, matplotlib, cartopy, shapely,
 reportlab, svglib) installs as a binary wheel on Linux (x86_64 and aarch64), macOS and Windows,
 so no compiler, GEOS or PROJ is needed.
 
@@ -128,7 +128,7 @@ cd ~
 git clone https://github.com/OceanDataTools/sbe-qa-processing.git
 sudo mv ~/sbe-qa-processing /opt/
 cd /opt/sbe-qa-processing
-uv sync --no-dev --extra openvdm --no-managed-python   # the system Python 3.11-3.14
+uv sync --no-dev --extra openvdm --no-managed-python   # the system Python 3.11+
 ```
 
 It's a git checkout, so [Updating](#updating) pulls into it directly. The hook runs the venv's

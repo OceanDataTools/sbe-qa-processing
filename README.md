@@ -234,7 +234,8 @@ the maps are drawn without coastlines. The tests set it.
 
 A config TOML describes the cruise for the reports, sets the expected area and dates for the
 integrity checks, and tunes the science checks. Every table and key is optional; leave out
-what you don't know. A complete example:
+what you don't know. `configs/config.example.toml` shows every key, with each threshold at its
+default. A complete example:
 
 ```toml
 [cruise]

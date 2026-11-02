@@ -155,3 +155,39 @@ def test_the_hook_reads_the_vessel_from_the_cruise_config_openvdm_writes(tmp_pat
         "Robert Gordon Sproul",
         "ops@example.org",
     )
+
+
+def test_a_cruise_from_the_file_openvdm_writes_resolves_as_from_its_api(tmp_path):
+    """--cruise-config: the cruise from OpenVDM's export, as from OpenVDM's API"""
+    warehouse = tmp_path / "warehouse"
+    cruise_dir = warehouse / "SP2613"
+    cruise_dir.mkdir(parents=True)
+    api = api_cruise_config(warehouse)
+    vessel = {"name": "Robert Gordon Sproul", "contact": {"email": "ops@example.org"}}
+    run_openvdm(
+        "export_cruise_config", cruise_config=api, vessel=vessel, cruise_dir=str(cruise_dir)
+    )
+    site = openvdm.SiteConfig()
+    from_file = openvdm.resolve(
+        openvdm.load_cruise_json(cruise_dir / "cruise_config.json"), site, "CTD"
+    )
+    from_api = openvdm.resolve(
+        api, site, "CTD", vessel=openvdm.vessel_settings(vessel, "openvdm.yaml")
+    )
+    for name in (
+        "cruise_id",
+        "cruise_name",
+        "cruise_pi",
+        "cruise_location",
+        "depart_date",
+        "arrive_date",
+        "extent",
+        "manifest_path",
+        "vessel_name",
+        "contact_email",
+    ):
+        assert getattr(from_file.config, name) == getattr(from_api.config, name), name
+    assert (from_file.fileset_dir, from_file.output_dir) == (
+        from_api.fileset_dir,
+        from_api.output_dir,
+    )

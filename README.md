@@ -23,6 +23,9 @@ Two optional integrations build on this:
   XML, identical to R2R's own reports.
 - **[OpenVDM](#openvdm)** runs the QA from a post-transfer hook on each cruise's CTD files.
 
+**[docs/examples](docs/examples/)** has what it writes for a real cruise, SP2613: the PDF reports
+from `run` and `r2r run`, the cast map and the R2R QA 2.0 XML.
+
 [COOKBOOK.md](COOKBOOK.md) works through both, end to end, with real output: a directory of
 Seasave files with and without a config, and an R2R fileset from download to comparing ratings
 with R2R's report.

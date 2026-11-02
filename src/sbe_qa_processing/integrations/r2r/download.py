@@ -26,6 +26,8 @@ from sbe_qa_processing.network import reaching
 R2R = "https://service.rvdata.us"
 SUFFIXES = ("qa.2.0.xml", "qa.xml")  # R2R's QA reports' file name endings, newest first
 DOWNLOAD_TIMEOUT = 120  # [s]
+# Python's tarfile "data" filter, from 3.11.4 (Debian 12 has 3.11.2)
+HAS_DATA_FILTER = hasattr(tarfile, "data_filter")
 
 
 @dataclass
@@ -105,10 +107,23 @@ def extract_bag(archive: bytes, destination: Path) -> int:
             if not member.isfile() or not path.is_relative_to(root):
                 continue
             member.name = str(path.relative_to(root))
-            # the "data" filter rejects absolute paths, links and anything outside destination
-            tar.extract(member, destination, filter="data")
+            safe_extract(tar, member, destination)
             count += 1
     return count
+
+
+def safe_extract(tar: tarfile.TarFile, member: tarfile.TarInfo, destination: Path) -> None:
+    """A regular file of an archive into destination, refusing an absolute path or one that
+    leaves destination. Python's "data" filter does that from 3.11.4; on 3.11.0 to 3.11.3 (e.g.
+    Debian 12's 3.11.2), which don't have it, the same checks are made here
+    """
+    if HAS_DATA_FILTER:
+        tar.extract(member, destination, filter="data")
+        return
+    target = (destination / member.name).resolve()
+    if not member.isfile() or not target.is_relative_to(destination.resolve()):
+        raise ValueError(f"archive member {member.name!r} isn't a file inside {destination}")
+    tar.extract(member, destination)
 
 
 def download_fileset(cruise_id: str, fileset_id: int, destination: Path) -> Download:

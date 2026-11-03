@@ -30,6 +30,12 @@ SP2613_EXTENT = {
 }
 
 
+@pytest.fixture(autouse=True)
+def no_installed_site_toml(monkeypatch, tmp_path):
+    """The hook reads the checkout's configs/site.toml without --site-config; not in these tests"""
+    monkeypatch.setattr(openvdm, "DEFAULT_SITE_CONFIG", tmp_path / "installed" / "site.toml")
+
+
 def cruise_config(base_dir: Path, cruise_id="SP2613", extent: dict | None = None) -> dict:
     """A getCruiseConfig response, trimmed to what the hook reads"""
     return {
@@ -487,6 +493,7 @@ def test_config_from_openvdm_reports_gaps(openvdm_api, tmp_path, capsys):
     err = capsys.readouterr().err
     assert "cruise extent from none" in err and "the area check is n/a" in err
     assert "the site config's [vessel] id isn't used" in err and "no end date" not in err
+    assert "no site TOML" not in err
     # The notes are kept in the file, for whoever reviews it
     text = (configs / "SP2613.toml").read_text()
     assert "# Note: no cruise extent" in text and "vessel_id" not in text
@@ -509,6 +516,10 @@ def test_config_from_openvdm_to_stdout(openvdm_api, api_response, tmp_path, caps
     assert "depart_port" not in data["cruise"]
     assert "cruise extent from openvdm" in captured.err
     assert "no end date; arrive_date is today" in captured.err
+    # Without a site TOML: a note for a run by hand, not an error
+    assert f"note: no site TOML at {openvdm.DEFAULT_SITE_CONFIG}; running without one" in (
+        captured.err
+    )
 
 
 def test_config_from_openvdm_explains_missing_configuration(openvdm_api, capsys):
@@ -537,6 +548,29 @@ def test_config_from_openvdm_with_openvdm_yaml(openvdm_api, tmp_path, capsys):
     captured = capsys.readouterr()
     assert tomllib.loads(captured.out)["cruise"]["vessel_name"] == "Sproul"
     assert "vessel settings from cruise_config.json" in captured.err
+
+
+def test_the_installed_site_toml_is_the_default(tmp_path, monkeypatch):
+    """Without --site-config: the install's configs/site.toml when there's one, else none"""
+    given = tmp_path / "given.toml"
+    assert openvdm.site_config_path(given) == given
+    assert openvdm.site_config_path(None) is None
+    installed = openvdm.DEFAULT_SITE_CONFIG
+    installed.parent.mkdir()
+    installed.write_text("")
+    monkeypatch.chdir(tmp_path.parent)
+    assert openvdm.site_config_path(None) == installed
+    assert openvdm.site_config_path(given) == given
+
+
+def test_the_default_site_toml_is_in_the_checkout(tmp_path):
+    root = Path(__file__).parents[1]
+    assert openvdm.install_site_config(Path(openvdm.__file__)) == root / "configs" / "site.toml"
+    # Not in a checkout (a wheel in site-packages): the current directory's
+    wheel = tmp_path / "lib/python3.12/site-packages/sbe_qa_processing/integrations/openvdm"
+    wheel.mkdir(parents=True)
+    (wheel / "hook.py").touch()
+    assert openvdm.install_site_config(wheel / "hook.py") == Path("configs/site.toml")
 
 
 def test_openvdm_yaml_not_found(tmp_path, capsys):

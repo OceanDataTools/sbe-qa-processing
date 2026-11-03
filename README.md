@@ -559,6 +559,7 @@ hook's command by hand, as root, without `--changed-files`
 | `... doesn't exist yet; nothing to do` | The transfer hasn't brought any files yet |
 | `Casts warn (0): no .hex, .dat or .hdr files in ...` | The transfer's directory has no casts: check `TRANSFER` is the CTD's collection system transfer |
 | `OpenVDM has no current cruise` | Start a cruise in OpenVDM, or use `--cruise-config` for a past one |
+| `note: no site TOML at ...; running without one` | Not an error: neither `--site-config` nor the install's `configs/site.toml`. The QA runs, without `[extent]` when OpenVDM has no cruise extent; `site-config` writes one (INSTALL.md step 3) |
 | `no collection system transfer named ...` | `TRANSFER` isn't a transfer's name in OpenVDM (Configuration > Collection System Transfers) |
 | `no extra directory named 'CTD_QA'` | Add it in OpenVDM (Configuration > Extra Directories), or set the site TOML's `[openvdm] output_extra_directory` |
 | `no openvdm.yaml at ...` | OpenVDM is installed elsewhere: give `--openvdm-config` |
@@ -592,7 +593,7 @@ Installed `openvdm.yaml` files call it, so its arguments keep their names.
 | `--openvdm-config OPENVDM_YAML` | `/opt/openvdm/server/etc/openvdm.yaml` | OpenVDM's settings: its web root (`siteRoot`) and, from OpenVDM 2.17, the `vessel` block. Needs the `openvdm` extra |
 | `--site-root URL` | none | OpenVDM's web root, instead of `--openvdm-config`. The vessel block then comes from the cruise's `cruise_config.json` |
 | `--cruise-config CRUISE_CONFIG_JSON` | none | A cruise's `cruise_config.json`, in its directory: that cruise, past or current, without OpenVDM's API (which knows only the current cruise). The vessel block comes from the same file, and `--openvdm-config` then only says where OpenVDM is, for the MD5 summary. Not with `--site-root` |
-| `--site-config SITE_TOML` | none | The ship's [site TOML](#site-toml) |
+| `--site-config SITE_TOML` | the install's `configs/site.toml`, when it exists | The ship's [site TOML](#site-toml) |
 | `--changed-files FILES` | none | OpenVDM's `{newFiles}` and `{updatedFiles}`; repeatable. When given, the QA runs only if they include CTD files. Use the `--changed-files={newFiles}` form, so an empty list isn't dropped |
 | `--execute-notebook` | off | Run the notebook and save its outputs |
 | `--theme THEME_TOML` | none | A [theme](#themes) file; the site TOML's `[theme]` applies on top |
@@ -651,7 +652,7 @@ are the defaults. It works offline.
 
 | Argument | Default | Description |
 |---|---|---|
-| `-o`, `--output SITE_TOML` | `configs/site.toml` | The file to write, or `-` for stdout |
+| `-o`, `--output SITE_TOML` | the install's `configs/site.toml`, where the hook reads it | The file to write, or `-` for stdout |
 | `--openvdm-config OPENVDM_YAML` | `/opt/openvdm/server/etc/openvdm.yaml`, when it exists | Its `vessel` block's settings (OpenVDM 2.17) are the defaults where the site TOML has none |
 | `--force` | off | Replace an existing site TOML |
 

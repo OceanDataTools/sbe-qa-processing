@@ -37,7 +37,7 @@ Use uv. Run from the repo root.
 - Run with R2R's tests and XML: `uv run sbe-qa-processing r2r run tests/configs/SP2613.toml data/SP2613_169847_ctd -o output/SP2613 [--force] [--execute-notebook]`
 - Make a cruise TOML from R2R's catalog API: `uv run sbe-qa-processing r2r config-from-catalog CRUISE_ID FILESET_ID [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`. It uses `integrations.r2r.catalog.config_from_r2r_catalog`. The API has no port coordinates, country or state.
 - Make a cruise TOML from an R2R QA XML: `uv run sbe-qa-processing r2r config-from-qa data/<...>/r2r_qa.2.0.xml [-o configs|-] [--force]`
-- Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [-o configs/site.toml] [--force]`
+- Make the per-ship site TOML by prompting (stdin, prompts on stderr): `uv run sbe-qa-processing site-config [-o SITE_TOML] [--force]` (default: the install's `configs/site.toml`, which the hook reads without `--site-config`)
 - Make a cruise TOML from OpenVDM's current cruise without running the QA: `uv run sbe-qa-processing config-from-openvdm [TRANSFER] --site-root URL|--cruise-config CRUISE_CONFIG_JSON --site-config site.toml [-o configs|-] [--force]`, which writes `<output>/<CRUISE_ID>.toml`.
 
 `data/` (fetched or unpacked filesets) and `output/` (generated reports) are gitignored at the repo root, so `tests/data/` is tracked. `configs/` is the users' space, the commands' default for cruise and site TOMLs: git ignores everything in it but the `*.example.toml` files, so a ship's `site.toml` or a cruise TOML can't be committed by accident. The three validation cruises' R2R cruise TOMLs are test fixtures, in `tests/configs/` (conftest's `CONFIGS`; `EXAMPLES` is `configs/`).

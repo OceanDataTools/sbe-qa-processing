@@ -178,6 +178,10 @@ cd /opt/sbe-qa-processing
 .venv/bin/sbe-qa-processing site-config        # writes configs/site.toml
 ```
 
+`configs/site.toml` in the install is where the hook reads it, so the hook commands below
+needn't name it, and `site-config` writes it there from any directory. (`-o` writes another,
+and the hook's `--site-config` reads another.)
+
 It asks for, in order (Enter keeps the `[default]`, `-` clears it):
 
 1. **The vessel and the report contact:** the vessel's name, the contact institution and email.
@@ -215,7 +219,7 @@ To check the site TOML against OpenVDM's current cruise without running the QA, 
 config the hook would use:
 
 ```bash
-.venv/bin/sbe-qa-processing config-from-openvdm CTD --site-config configs/site.toml -o -
+.venv/bin/sbe-qa-processing config-from-openvdm CTD -o -
 ```
 
 It shows the cruise's dates, the vessel and the extent, and notes what's missing or assumed
@@ -239,7 +243,6 @@ postHookCommands:
             - openvdm
             - "{collectionSystemTransferName}"
             - "--openvdm-config=/opt/openvdm/server/etc/openvdm.yaml"
-            - "--site-config=/opt/sbe-qa-processing/configs/site.toml"
             - "--changed-files={newFiles}"
             - "--changed-files={updatedFiles}"
 ```
@@ -249,8 +252,8 @@ postHookCommands:
 | `collectionSystemTransferName: CTD` | The CTD's collection system transfer, by its name in OpenVDM (Configuration > Collection System Transfers) |
 | `/opt/.../sbe-qa-processing`, `openvdm` | The install from step 1, and the hook command |
 | `"{collectionSystemTransferName}"` | OpenVDM fills in the transfer's name: the hook reads that transfer's directory |
+| (no `--site-config`) | The hook reads the site TOML from step 3 at `/opt/sbe-qa-processing/configs/site.toml`; give `--site-config=PATH` for one elsewhere |
 | `--openvdm-config` | `openvdm.yaml` itself, for OpenVDM's web address (`siteRoot`) and `vessel` block. This path is the default; give yours if OpenVDM is installed elsewhere |
-| `--site-config` | The site TOML from step 3, by its full path |
 | `--changed-files={newFiles}`, `={updatedFiles}` | The transfer's new and updated files, so the QA runs only when CTD files (`.hex/.dat`, `.XMLCON/.con`, `.hdr`, `.bl`) changed. Keep the `--changed-files=` form: OpenVDM drops a bare `{newFiles}` argument when there are none |
 
 Optional arguments, one list item each: `--execute-notebook` saves the notebook with its outputs
@@ -270,8 +273,7 @@ it assess the cruise whatever changed:
 
 ```bash
 sudo /opt/sbe-qa-processing/.venv/bin/sbe-qa-processing openvdm CTD \
-    --openvdm-config=/opt/openvdm/server/etc/openvdm.yaml \
-    --site-config=/opt/sbe-qa-processing/configs/site.toml
+    --openvdm-config=/opt/openvdm/server/etc/openvdm.yaml
 ```
 
 It prints the cruise it found, the QA summary and the files it wrote into the extra directory

@@ -21,7 +21,11 @@ from sbe_qa_processing.clitools import (
 from sbe_qa_processing.filenames import report_stem
 
 # Stdlib only: pyyaml (the openvdm extra) is imported when openvdm.yaml is read
-from sbe_qa_processing.integrations.openvdm.hook import DEFAULT_OPENVDM_CONFIG, OpenVDMError
+from sbe_qa_processing.integrations.openvdm.hook import (
+    DEFAULT_OPENVDM_CONFIG,
+    DEFAULT_SITE_CONFIG,
+    OpenVDMError,
+)
 
 logger = logging.getLogger(__name__)
 # Errors that are a one-line message: OpenVDM not having what was asked for
@@ -52,7 +56,17 @@ def _resolve_openvdm(args: argparse.Namespace):
             vessel = openvdm.vessel_settings(settings.get("vessel"), "openvdm.yaml")
         cruise_config = openvdm.fetch_cruise_config(site_root)
         source = f"OpenVDM ({site_root})"
-    site = openvdm.load_site_config(args.site_config)
+    path = openvdm.site_config_path(args.site_config)
+    if path is None:
+        # Not an error: the QA needs nothing from it. On stderr for a run by hand; OpenVDM
+        # logs a passing hook's output only at DEBUG
+        print(
+            f"note: no site TOML at {openvdm.DEFAULT_SITE_CONFIG}; running without one (no "
+            "[extent] when OpenVDM has no cruise extent, and the vessel and contact only from "
+            "OpenVDM). `sbe-qa-processing site-config` writes it",
+            file=sys.stderr,
+        )
+    site = openvdm.load_site_config(path)
     run = openvdm.resolve(cruise_config, site, args.transfer, vessel)
     return run, source
 
@@ -127,6 +141,7 @@ def _config_from_openvdm(args: argparse.Namespace) -> int:
 
 
 def _site_config(args: argparse.Namespace) -> int:
+    from sbe_qa_processing.integrations.openvdm import hook as openvdm
     from sbe_qa_processing.integrations.openvdm.hook import (
         SiteConfig,
         load_openvdm_yaml,
@@ -136,6 +151,7 @@ def _site_config(args: argparse.Namespace) -> int:
     )
     from sbe_qa_processing.integrations.openvdm.site_setup import prompt_site_config
 
+    args.output = args.output or openvdm.DEFAULT_SITE_CONFIG
     if refuse_overwrite(args.output, args.force):
         return 1
     # OpenVDM 2.17's vessel settings are the defaults where the site config has none
@@ -215,7 +231,10 @@ def _add_openvdm_arguments(parser: argparse.ArgumentParser) -> None:
         "--site-config",
         metavar="SITE_TOML",
         type=Path,
-        help="per-ship TOML from site-config (vessel, extent, ...); optional",
+        help=(
+            "per-ship TOML from site-config (vessel, extent, ...); optional (default "
+            f"{DEFAULT_SITE_CONFIG}, the install's, when it exists)"
+        ),
     )
 
 
@@ -281,8 +300,10 @@ def add_commands(commands) -> None:
         "--output",
         metavar="SITE_TOML",
         type=Path,
-        default=Path("configs/site.toml"),
-        help="site TOML to write, or - for stdout (default %(default)s)",
+        help=(
+            f"site TOML to write, or - for stdout (default {DEFAULT_SITE_CONFIG}, the install's, "
+            "where the openvdm hook reads it)"
+        ),
     )
     site.add_argument(
         "--openvdm-config",

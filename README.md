@@ -24,7 +24,21 @@ Two optional integrations build on this:
 - **[OpenVDM](#openvdm)** runs the QA from a post-transfer hook on each cruise's CTD files.
 
 **[docs/examples](docs/examples/)** has what it writes for a real cruise, SP2613: the PDF reports
-from `run` and `r2r run`, the cast map and the R2R QA 2.0 XML.
+from `run` and `r2r run`, the cast map, one cast's figures and the R2R QA 2.0 XML. The cast map
+and Station 1's figures, as the PDF shows them:
+
+<table>
+<tr>
+<td colspan="2" align="center"><img src="docs/examples/run/SP2613_plots/cast_map.svg" width="50%" alt="SP2613's cast map: four stations and a deck test off San Diego, with a world inset"></td>
+</tr>
+<tr>
+<td rowspan="2" width="50%"><img src="docs/examples/run/SP2613_plots/SP2613_Station1_profiles.svg" alt="Station 1's profiles: temperature, conductivity, salinity and the other channels against pressure, with the dual sensors' differences"></td>
+<td><img src="docs/examples/run/SP2613_plots/SP2613_Station1_ts.svg" alt="Station 1's TS diagram"></td>
+</tr>
+<tr>
+<td><img src="docs/examples/run/SP2613_plots/SP2613_Station1_pressure.svg" alt="Station 1's pressure record"></td>
+</tr>
+</table>
 
 [COOKBOOK.md](COOKBOOK.md) works through both, end to end, with real output: a directory of
 Seasave files with and without a config, and an R2R fileset from download to comparing ratings

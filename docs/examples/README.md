@@ -6,11 +6,11 @@ conductivity, four stations and a deck test.
 
 | Directory | Command | Files |
 |---|---|---|
-| [`run/`](run/) | `run`, the core QA, as the OpenVDM hook writes it | [the PDF report](run/SP2613_qa_report.pdf), [the cast map](run/SP2613_plots/cast_map.svg) and [Station 1's pressure record](run/SP2613_plots/SP2613_Station1_pressure.svg) |
+| [`run/`](run/) | `run`, the core QA, as the OpenVDM hook writes it | [the PDF report](run/SP2613_qa_report.pdf), [the cast map](run/SP2613_plots/cast_map.svg), and Station 1's [profiles](run/SP2613_plots/SP2613_Station1_profiles.svg), [TS diagram](run/SP2613_plots/SP2613_Station1_ts.svg) and [pressure record](run/SP2613_plots/SP2613_Station1_pressure.svg), all four in the README's gallery |
 | [`r2r/`](r2r/) | `r2r run`, with R2R's CTD tests | [the PDF report](r2r/SP2613_169847_qa_report.pdf), with R2R's certificate after the title block, and [the R2R QA 2.0 XML](r2r/SP2613_169847_qa.2.0.xml) |
 
-Left out: the other figures, since every one is in the PDFs, and the notebooks, which hold
-local paths.
+Left out: the other casts' figures, since every one is in the PDFs, and the notebooks, which
+hold local paths.
 
 ![SP2613's casts](run/SP2613_plots/cast_map.svg)
 
@@ -26,7 +26,7 @@ rm -rf output/examples
 uv run sbe-qa-processing run data/SP2613_169847_ctd -c tests/configs/SP2613.toml -o output/examples/run
 uv run sbe-qa-processing r2r run tests/configs/SP2613.toml data/SP2613_169847_ctd -o output/examples/r2r
 cp output/examples/run/SP2613_qa_report.pdf docs/examples/run/
-cp output/examples/run/SP2613_plots/{cast_map,SP2613_Station1_pressure}.svg docs/examples/run/SP2613_plots/
+cp output/examples/run/SP2613_plots/{cast_map,SP2613_Station1_profiles,SP2613_Station1_ts,SP2613_Station1_pressure}.svg docs/examples/run/SP2613_plots/
 cp output/examples/r2r/SP2613_169847_{qa_report.pdf,qa.2.0.xml} docs/examples/r2r/
 ```
 

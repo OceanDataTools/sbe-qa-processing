@@ -360,7 +360,7 @@ def parse_openvdm_date(text: str | None) -> date | None:
         return None
     for fmt in ("%Y/%m/%d %H:%M", "%Y/%m/%d", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
         try:
-            return datetime.strptime(text.strip(), fmt).date()  # noqa: DTZ007 - a calendar date
+            return datetime.strptime(text.strip(), fmt).date()  # a calendar date
         except ValueError:
             continue
     return None

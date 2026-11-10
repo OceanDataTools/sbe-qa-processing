@@ -35,7 +35,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+        # 3.11.3: before tarfile's "data" filter (3.11.4), like Debian 12's 3.11.2, which
+        # INSTALL.md recommends there and uv doesn't build
+        python-version: ["3.11.3", "3.11", "3.12", "3.13", "3.14", "3.15"]
         # The README says the core and R2R commands run on macOS and Windows too
         include:
           - os: macos-latest
@@ -55,8 +57,8 @@ jobs:
       - run: uv sync --locked
       # Nothing is fetched from R2R or Natural Earth: the tests unpack the R2R validation filesets
       # committed in tests/data/, so every R2R comparison runs on every OS, and draw maps without
-      # Natural Earth. -rs lists any test that skips
-      - run: uv run --locked pytest -rs
+      # Natural Earth. -rs lists any test that skips; -n auto runs them on every core
+      - run: uv run --locked pytest -rs -n auto
 
   openvdm-contract:
     # The OpenVDM hook against OpenVDM's own code: how it runs the hook command the README

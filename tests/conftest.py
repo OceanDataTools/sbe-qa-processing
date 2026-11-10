@@ -1,5 +1,6 @@
 import os
 import tarfile
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -23,14 +24,24 @@ COMMITTED = Path(__file__).parent / "data"
 
 
 def pytest_sessionstart(session):
-    """Unpack each committed fileset that data/ doesn't have (a fetched copy stays)"""
+    """Unpack each committed fileset that data/ doesn't have (a fetched copy stays). Into a
+    temporary directory, then renamed into place: with `pytest -n`, each worker starts a session
+    too, and one that loses the race drops its copy, so none sees half a fileset
+    """
     for archive in sorted(COMMITTED.glob("*_ctd.tar.xz")):
-        if not (DATA / archive.name.removesuffix(".tar.xz") / "bagit.txt").exists():
-            DATA.mkdir(exist_ok=True)
+        fileset = DATA / archive.name.removesuffix(".tar.xz")
+        if fileset.exists():
+            continue
+        DATA.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=DATA) as unpacking:
             with tarfile.open(archive) as tar:
                 # filter: Python 3.11.4 and later; these archives are this repo's own
                 safe = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
-                tar.extractall(DATA, **safe)
+                tar.extractall(unpacking, **safe)
+            try:
+                Path(unpacking, fileset.name).rename(fileset)
+            except OSError:  # another worker's copy got there first
+                pass
 
 
 def r2r_fileset(name: str) -> Path:

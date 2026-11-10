@@ -142,7 +142,7 @@ def test_the_hook_reads_the_vessel_from_the_cruise_config_openvdm_writes(tmp_pat
     cruise_dir = warehouse / "SP2613"
     cruise_dir.mkdir(parents=True)
     api = api_cruise_config(warehouse)
-    vessel = {"name": "Robert Gordon Sproul", "contact": {"email": "ops@example.org"}}
+    vessel = {"name": "Robert Gordon Sproul", "email": "ops@example.org"}
     exported = run_openvdm(
         "export_cruise_config", cruise_config=api, vessel=vessel, cruise_dir=str(cruise_dir)
     )
@@ -163,7 +163,7 @@ def test_a_cruise_from_the_file_openvdm_writes_resolves_as_from_its_api(tmp_path
     cruise_dir = warehouse / "SP2613"
     cruise_dir.mkdir(parents=True)
     api = api_cruise_config(warehouse)
-    vessel = {"name": "Robert Gordon Sproul", "contact": {"email": "ops@example.org"}}
+    vessel = {"name": "Robert Gordon Sproul", "email": "ops@example.org"}
     run_openvdm(
         "export_cruise_config", cruise_config=api, vessel=vessel, cruise_dir=str(cruise_dir)
     )

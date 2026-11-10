@@ -525,9 +525,8 @@ hook in `openvdm.yaml`) is in [INSTALL.md](INSTALL.md#install-for-the-openvdm-ho
   `cruise_config.json` instead (OpenVDM's per-cruise config file, which its `CRUISE_CONFIG_FN`
   setting names).
 - **The vessel's name and contact,** from the site TOML, or where it leaves them blank, from
-  `openvdm.yaml`'s `vessel` block (OpenVDM 2.17); a disagreement is noted. With `--site-root` or
-  `--cruise-config` there's no `openvdm.yaml` to read, so they come from the cruise's
-  `cruise_config.json`, the vessel the cruise was on.
+  `openvdm.yaml`'s `vessel` block (OpenVDM 2.17); a disagreement is noted. With
+  `--cruise-config`, from that `cruise_config.json` instead: the vessel the cruise was on.
 - **The expected area,** from OpenVDM's `cruiseExtent`, which `build_cruise_tracks.py` sets
   from the ship's track each time the data dashboard runs, else the site TOML's `[extent]`.
   Without either, the area check is n/a.
@@ -549,8 +548,9 @@ hook in `openvdm.yaml`) is in [INSTALL.md](INSTALL.md#install-for-the-openvdm-ho
   warehouse user.
 - **Adds those files to the cruise's MD5 summary,** with OpenVDM's
   `utils/update_md5_summary.py` (OpenVDM 2.16.1 or later), found from `--openvdm-config`'s
-  install directory, or `/opt/openvdm` with `--site-root`. If that fails, the hook logs a warning
-  and still succeeds, and the reports reach the summary at its next full rebuild.
+  install directory. The files go by their full paths, so for a cruise from `--cruise-config`
+  OpenVDM adds them only if its warehouse has the cruise there. If that fails, the hook logs a
+  warning and still succeeds, and the reports reach the summary at its next full rebuild.
 - **Takes the extent** as above. A cast near the newest end of the track can fall just outside
   OpenVDM's extent until the next dashboard update; the next hook run then passes it. A box
   across the antimeridian has westernmost > easternmost, as in R2R's reports.
@@ -576,8 +576,8 @@ hook's command by hand, as root, without `--changed-files`
 | `note: no site TOML at ...; running without one` | Not an error: neither `--site-config` nor the install's `configs/site.toml`. The QA runs, without `[extent]` when OpenVDM has no cruise extent; `site-config` writes one (INSTALL.md step 3) |
 | `no collection system transfer named ...` | `TRANSFER` isn't a transfer's name in OpenVDM (Configuration > Collection System Transfers) |
 | `no extra directory named 'CTD_QA'` | Add it in OpenVDM (Configuration > Extra Directories), or set the site TOML's `[openvdm] output_extra_directory` |
-| `no openvdm.yaml at ...` | OpenVDM is installed elsewhere: give `--openvdm-config` |
-| `couldn't reach OpenVDM (...)` | OpenVDM's web server isn't answering at `openvdm.yaml`'s `siteRoot` (or `--site-root`) |
+| `no openvdm.yaml at ...` | OpenVDM is installed elsewhere: give `--openvdm-config`, or the cruise's `cruise_config.json` with `--cruise-config` |
+| `couldn't reach OpenVDM (...)` | OpenVDM's web server isn't answering at `openvdm.yaml`'s `siteRoot` |
 | `can't read the cruise config ...`, `... isn't an OpenVDM cruise config`, `... OpenVDM names a cruise's directory after it` | `--cruise-config` needs the `cruise_config.json` in the cruise's own directory, named after the cruise |
 | `the reports aren't in OpenVDM's MD5 summary: ...` | OpenVDM's `update_md5_summary.py` is missing (OpenVDM before 2.16.1) or failed. The reports are written all the same |
 | `note: OpenVDM has no cruise extent; using the site config's [extent]` | OpenVDM before 2.17, or `build_cruise_tracks.py` hasn't run yet |
@@ -590,8 +590,7 @@ hook's command by hand, as root, without `--changed-files`
 #### `openvdm`
 
 ```text
-sbe-qa-processing openvdm [--openvdm-config OPENVDM_YAML | --site-root URL]
-                          [--cruise-config CRUISE_CONFIG_JSON]
+sbe-qa-processing openvdm [--openvdm-config OPENVDM_YAML] [--cruise-config CRUISE_CONFIG_JSON]
                           [--site-config SITE_TOML] [--changed-files FILES]
                           [--execute-notebook] [--theme THEME_TOML] [--fileset-id FILESET_ID]
                           [TRANSFER]
@@ -605,8 +604,7 @@ Installed `openvdm.yaml` files call it, so its arguments keep their names.
 |---|---|---|
 | `TRANSFER` | `CTD` | The collection system transfer's name; in a hook, `{collectionSystemTransferName}` |
 | `--openvdm-config OPENVDM_YAML` | `/opt/openvdm/server/etc/openvdm.yaml` | OpenVDM's settings: its web root (`siteRoot`) and, from OpenVDM 2.17, the `vessel` block. Needs the `openvdm` extra |
-| `--site-root URL` | none | OpenVDM's web root, instead of `--openvdm-config`. The vessel block then comes from the cruise's `cruise_config.json` |
-| `--cruise-config CRUISE_CONFIG_JSON` | none | A cruise's `cruise_config.json`, in its directory: that cruise, past or current, without OpenVDM's API (which knows only the current cruise). The vessel block comes from the same file, and `--openvdm-config` then only says where OpenVDM is, for the MD5 summary. Not with `--site-root` |
+| `--cruise-config CRUISE_CONFIG_JSON` | none | A cruise's `cruise_config.json`, in its directory: that cruise, past or current, without OpenVDM's API (which knows only the current cruise). The vessel block comes from the same file, and `--openvdm-config` then only says where OpenVDM is, for the MD5 summary |
 | `--site-config SITE_TOML` | the install's `configs/site.toml`, when it exists | The ship's [site TOML](#site-toml) |
 | `--changed-files FILES` | none | OpenVDM's `{newFiles}` and `{updatedFiles}`; repeatable. When given, the QA runs only if they include CTD files. Use the `--changed-files={newFiles}` form, so an empty list isn't dropped |
 | `--execute-notebook` | off | Run the notebook and save its outputs |
@@ -616,7 +614,7 @@ Installed `openvdm.yaml` files call it, so its arguments keep their names.
 #### `config-from-openvdm`
 
 ```text
-sbe-qa-processing config-from-openvdm [--openvdm-config OPENVDM_YAML | --site-root URL]
+sbe-qa-processing config-from-openvdm [--openvdm-config OPENVDM_YAML]
                                       [--cruise-config CRUISE_CONFIG_JSON]
                                       [--site-config SITE_TOML] [-o OUTPUT_DIR] [--force]
                                       [TRANSFER]
@@ -624,7 +622,7 @@ sbe-qa-processing config-from-openvdm [--openvdm-config OPENVDM_YAML | --site-ro
 
 Builds the config TOML the hook would use, from OpenVDM's current cruise and the site TOML,
 without running the QA, and reports what's missing or assumed. `TRANSFER`, `--openvdm-config`,
-`--site-root`, `--cruise-config` and `--site-config` are as for `openvdm`.
+`--cruise-config` and `--site-config` are as for `openvdm`.
 
 | Argument | Default | Description |
 |---|---|---|

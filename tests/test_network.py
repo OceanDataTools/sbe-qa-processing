@@ -85,9 +85,15 @@ def test_vv_adds_the_traceback(position, tmp_path, monkeypatch, capsys):
     assert err.endswith(f"sbe-qa-processing: {R2R_UNREACHABLE}\n")
 
 
-def test_unreachable_openvdm_is_the_hooks_one_line_message(monkeypatch, capsys):
+def openvdm_yaml(tmp_path):
+    path = tmp_path / "openvdm.yaml"
+    path.write_text('siteRoot: "http://openvdm.example/"\n')
+    return str(path)
+
+
+def test_unreachable_openvdm_is_the_hooks_one_line_message(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(hook.urllib.request, "urlopen", unreachable)
-    assert main(["openvdm", "--site-root", "http://openvdm.example/"]) == 1
+    assert main(["openvdm", "--openvdm-config", openvdm_yaml(tmp_path)]) == 1
     assert capsys.readouterr().err == (
         "sbe-qa-processing: NetworkError: couldn't reach OpenVDM (openvdm.example): nodename "
         "nor servname provided, or not known. Check the network connection and try again\n"
@@ -115,14 +121,14 @@ def test_unexpected_errors_still_raise(monkeypatch):
         main(["r2r", "config-from-catalog", "SP2613", "169847", "-o", "-"])
 
 
-def test_the_hook_reports_even_unexpected_errors_in_one_line(monkeypatch, capsys):
+def test_the_hook_reports_even_unexpected_errors_in_one_line(tmp_path, monkeypatch, capsys):
     """OpenVDM displays the hook's failure message, so a bug is one line there too"""
 
     def broken(*args, **kwargs):
         raise KeyError("a bug")
 
     monkeypatch.setattr(hook.urllib.request, "urlopen", broken)
-    assert main(["openvdm", "--site-root", "http://openvdm.example/"]) == 1
+    assert main(["openvdm", "--openvdm-config", openvdm_yaml(tmp_path)]) == 1
     assert capsys.readouterr().err == "sbe-qa-processing: KeyError: 'a bug'\n"
 
 

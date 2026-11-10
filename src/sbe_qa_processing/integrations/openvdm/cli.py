@@ -38,22 +38,14 @@ def _resolve_openvdm(args: argparse.Namespace):
     """
     from sbe_qa_processing.integrations.openvdm import hook as openvdm
 
-    if args.cruise_config and args.site_root:
-        raise OpenVDMError(
-            "--cruise-config and --site-root both say where the cruise is: give one"
-        )
     if args.cruise_config:
         # Any cruise, past or current, without the API; the vessel is the file's
         cruise_config = openvdm.load_cruise_json(args.cruise_config)
         source, vessel = str(args.cruise_config), None
     else:
-        if args.site_root:
-            # No openvdm.yaml: resolve reads the vessel block from the cruise's cruise_config.json
-            site_root, vessel = args.site_root, None
-        else:
-            settings = openvdm.load_openvdm_yaml(args.openvdm_config)
-            site_root = openvdm.site_root_from_config(settings)
-            vessel = openvdm.vessel_settings(settings.get("vessel"), "openvdm.yaml")
+        settings = openvdm.load_openvdm_yaml(args.openvdm_config)
+        site_root = openvdm.site_root_from_config(settings)
+        vessel = openvdm.vessel_settings(settings.get("vessel"), "openvdm.yaml")
         cruise_config = openvdm.fetch_cruise_config(site_root)
         source = f"OpenVDM ({site_root})"
     path = openvdm.site_config_path(args.site_config)
@@ -121,9 +113,8 @@ def _queue_md5_update(args: argparse.Namespace, run, written: list[Path]) -> Non
     """
     from sbe_qa_processing.integrations.openvdm import hook as openvdm
 
-    # With --site-root there's no openvdm.yaml to find OpenVDM by; try the default install
-    openvdm_yaml = DEFAULT_OPENVDM_CONFIG if args.site_root else args.openvdm_config
-    problem = openvdm.queue_md5_update(openvdm.openvdm_install_dir(openvdm_yaml), run, written)
+    install = openvdm.openvdm_install_dir(args.openvdm_config)
+    problem = openvdm.queue_md5_update(install, run, written)
     if problem:
         logger.warning("the reports aren't in OpenVDM's MD5 summary: %s", problem)
     else:
@@ -201,21 +192,12 @@ def _add_openvdm_arguments(parser: argparse.ArgumentParser) -> None:
             "(default %(default)s)"
         ),
     )
-    source = parser.add_mutually_exclusive_group()
-    source.add_argument(
+    parser.add_argument(
         "--openvdm-config",
         metavar="OPENVDM_YAML",
         type=Path,
         default=DEFAULT_OPENVDM_CONFIG,
         help="openvdm.yaml, for OpenVDM's siteRoot and vessel settings (default %(default)s)",
-    )
-    source.add_argument(
-        "--site-root",
-        metavar="URL",
-        help=(
-            "OpenVDM's web root URL, instead of --openvdm-config; the vessel settings then come "
-            "from the cruise's cruise_config.json"
-        ),
     )
     parser.add_argument(
         "--cruise-config",

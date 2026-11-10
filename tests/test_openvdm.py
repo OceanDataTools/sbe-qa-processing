@@ -328,16 +328,16 @@ def test_queue_md5_update(tmp_path, monkeypatch):
     fake = FakeRun()
     monkeypatch.setattr(openvdm.subprocess, "run", fake)
     assert openvdm.queue_md5_update(install, run, written) is None
-    # Every file, the plots directory's too, relative to the cruise directory
+    # Every file, the plots directory's too, by its full path
     assert fake.commands == [
         [
             str(install / "venv/bin/python"),
             str(install / "utils/update_md5_summary.py"),
             "--cruise-id",
             "SP2613",
-            "Products/CTD_QA/SP2613_plots/cast_map.svg",
-            "Products/CTD_QA/SP2613_plots/station1_ts.svg",
-            "Products/CTD_QA/SP2613_qa_report.pdf",
+            str(run.output_dir / "SP2613_plots/cast_map.svg"),
+            str(run.output_dir / "SP2613_plots/station1_ts.svg"),
+            str(run.output_dir / "SP2613_qa_report.pdf"),
         ]
     ]
 
@@ -388,7 +388,9 @@ def api_response(tmp_path):
 
 @pytest.fixture
 def openvdm_api(tmp_path, api_response):
-    """A stand-in OpenVDM web API serving getCruiseConfig for a cruise under tmp_path"""
+    """A stand-in OpenVDM web API serving getCruiseConfig for a cruise under tmp_path. Yields
+    the openvdm.yaml of a stand-in install whose siteRoot is the API, and the cruise directory
+    """
     response = api_response
 
     class Handler(BaseHTTPRequestHandler):
@@ -407,20 +409,16 @@ def openvdm_api(tmp_path, api_response):
 
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_port}/", tmp_path / "warehouse" / "SP2613"
+    openvdm_yaml = openvdm_install(tmp_path / "openvdm") / "server/etc/openvdm.yaml"
+    openvdm_yaml.write_text(f'siteRoot: "http://127.0.0.1:{server.server_port}/"\n')
+    yield str(openvdm_yaml), tmp_path / "warehouse" / "SP2613"
     server.shutdown()
 
 
 def test_hook_writes_reports_into_the_extra_directory(
     openvdm_api, api_response, tmp_path, monkeypatch, caplog, capsys
 ):
-    site_root, cruise_dir = openvdm_api
-    # With --site-root, OpenVDM's MD5 script is looked for in the default install
-    install = openvdm_install(tmp_path / "openvdm")
-    monkeypatch.setattr(
-        "sbe_qa_processing.integrations.openvdm.cli.DEFAULT_OPENVDM_CONFIG",
-        install / "server/etc/openvdm.yaml",
-    )
+    openvdm_yaml, cruise_dir = openvdm_api
     md5_update = FakeRun(1, "Unable to queue the MD5 summary update: no Gearman")
     monkeypatch.setattr(openvdm.subprocess, "run", md5_update)
     source = r2r_fileset("SP2613_169847_ctd") / "data"
@@ -433,10 +431,11 @@ def test_hook_writes_reports_into_the_extra_directory(
     api_response["cruiseExtent"] = SP2613_EXTENT
 
     # A transfer without CTD files is skipped
-    assert main(["openvdm", "CTD", "--site-root", site_root, "--changed-files="]) == 0
+    hook = ["openvdm", "CTD", "--openvdm-config", openvdm_yaml]
+    assert main([*hook, "--changed-files="]) == 0
     assert not (cruise_dir / "Products").exists()
 
-    args = ["openvdm", "CTD", "--site-root", site_root, "--changed-files=CTD/SP2613_Station4.bl"]
+    args = [*hook, "--changed-files=CTD/SP2613_Station4.bl"]
     # An R2R fileset ID from an older hook command is accepted and ignored
     assert main([*args, "--fileset-id", "169847"]) == 0
     captured = capsys.readouterr()
@@ -461,17 +460,14 @@ def test_hook_writes_reports_into_the_extra_directory(
     (command,) = md5_update.commands
     assert command[2:4] == ["--cruise-id", "SP2613"]
     queued = set(command[4:])
-    assert {
-        "Products/CTD_QA/SP2613_cruise.toml",
-        "Products/CTD_QA/SP2613_qa.ipynb",
-    } < queued
+    assert {str(output / "SP2613_cruise.toml"), str(output / "SP2613_qa.ipynb")} < queued
     assert len([f for f in queued if f.endswith(".svg")]) == 13
     assert "the reports aren't in OpenVDM's MD5 summary" in caplog.text
 
 
 def test_hook_reports_failures_to_openvdm(openvdm_api, capsys):
-    site_root, _ = openvdm_api
-    assert main(["openvdm", "XBT", "--site-root", site_root]) == 1
+    openvdm_yaml, _ = openvdm_api
+    assert main(["openvdm", "XBT", "--openvdm-config", openvdm_yaml]) == 1
     assert "no collection system transfer named 'XBT'" in capsys.readouterr().err
 
 
@@ -479,11 +475,11 @@ def test_hook_reports_failures_to_openvdm(openvdm_api, capsys):
 
 
 def test_config_from_openvdm_reports_gaps(openvdm_api, tmp_path, capsys):
-    site_root, _ = openvdm_api
+    openvdm_yaml, _ = openvdm_api
     site = tmp_path / "site.toml"
     site.write_text('[vessel]\nid = "32QU"\nname = "Sproul"\n')
     configs = tmp_path / "configs"
-    args = ["config-from-openvdm", "--site-root", site_root, "--site-config", str(site)]
+    args = ["config-from-openvdm", "--openvdm-config", openvdm_yaml, "--site-config", str(site)]
     assert main([*args, "-o", str(configs)]) == 0
 
     config = load_config(configs / "SP2613.toml")
@@ -506,10 +502,10 @@ def test_config_from_openvdm_reports_gaps(openvdm_api, tmp_path, capsys):
 
 
 def test_config_from_openvdm_to_stdout(openvdm_api, api_response, tmp_path, capsys):
-    site_root, _ = openvdm_api
+    openvdm_yaml, _ = openvdm_api
     api_response |= {"cruiseEndDate": ""}
     api_response["cruiseExtent"] = SP2613_EXTENT
-    assert main(["config-from-openvdm", "--site-root", site_root, "-o", "-"]) == 0
+    assert main(["config-from-openvdm", "--openvdm-config", openvdm_yaml, "-o", "-"]) == 0
     captured = capsys.readouterr()
     data = tomllib.loads(captured.out)
     assert data["cruise"]["arrive_date"] == datetime.now(UTC).date()
@@ -524,31 +520,26 @@ def test_config_from_openvdm_to_stdout(openvdm_api, api_response, tmp_path, caps
 
 
 def test_config_from_openvdm_explains_missing_configuration(openvdm_api, capsys):
-    site_root, _ = openvdm_api
-    assert main(["config-from-openvdm", "XBT", "--site-root", site_root, "-o", "-"]) == 1
+    openvdm_yaml, _ = openvdm_api
+    args = ["config-from-openvdm", "XBT", "--openvdm-config", openvdm_yaml, "-o", "-"]
+    assert main(args) == 1
     assert "no collection system transfer named 'XBT'" in capsys.readouterr().err
 
 
 def test_config_from_openvdm_with_openvdm_yaml(openvdm_api, tmp_path, capsys):
-    site_root, cruise_dir = openvdm_api
-    openvdm_yaml = tmp_path / "openvdm.yaml"
-    openvdm_yaml.write_text(yaml.safe_dump({"siteRoot": site_root, "vessel": VESSEL}))
+    openvdm_yaml, cruise_dir = openvdm_api
+    site_root = yaml.safe_load(Path(openvdm_yaml).read_text())["siteRoot"]
+    Path(openvdm_yaml).write_text(yaml.safe_dump({"siteRoot": site_root, "vessel": VESSEL}))
     # openvdm.yaml is current, so it wins over an older cruise_config.json
     cruise_dir.mkdir(parents=True)
     old_vessel = {"name": "Sproul"}
     (cruise_dir / "cruise_config.json").write_text(json.dumps({"vessel": old_vessel}))
-    args = ["config-from-openvdm", "--openvdm-config", str(openvdm_yaml), "-o", "-"]
+    args = ["config-from-openvdm", "--openvdm-config", openvdm_yaml, "-o", "-"]
     assert main(args) == 0
     captured = capsys.readouterr()
     cruise = tomllib.loads(captured.out)["cruise"]
     assert cruise["vessel_name"] == "Robert Gordon Sproul" and "vessel_id" not in cruise
     assert "vessel settings from openvdm.yaml" in captured.err
-
-    # With --site-root there's no openvdm.yaml: the cruise's cruise_config.json
-    assert main(["config-from-openvdm", "--site-root", site_root, "-o", "-"]) == 0
-    captured = capsys.readouterr()
-    assert tomllib.loads(captured.out)["cruise"]["vessel_name"] == "Sproul"
-    assert "vessel settings from cruise_config.json" in captured.err
 
 
 def test_the_installed_site_toml_is_the_default(tmp_path, monkeypatch):
@@ -579,7 +570,7 @@ def test_openvdm_yaml_not_found(tmp_path, capsys):
     missing = tmp_path / "openvdm.yaml"
     assert main(["openvdm", "--openvdm-config", str(missing)]) == 1
     err = capsys.readouterr().err
-    assert f"no openvdm.yaml at {missing}" in err and "--site-root" in err
+    assert f"no openvdm.yaml at {missing}" in err and "--cruise-config" in err
     assert main(["config-from-openvdm", "--openvdm-config", str(missing), "-o", "-"]) == 1
     assert "give its path with --openvdm-config" in capsys.readouterr().err
 
@@ -669,9 +660,3 @@ def test_config_from_openvdm_with_cruise_config(tmp_path, capsys):
     out = capsys.readouterr().out
     assert out.startswith(f"# Resolved from {path} for CTD\n")
     assert 'id = "SP2613"' in out and 'vessel_name = "Robert Gordon Sproul"' in out
-
-    args = ["config-from-openvdm", "--cruise-config", str(path), "--site-root", "http://x/"]
-    assert main([*args, "-o", "-"]) == 1
-    assert (
-        "--cruise-config and --site-root both say where the cruise is" in capsys.readouterr().err
-    )

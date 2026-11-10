@@ -246,8 +246,8 @@ def load_openvdm_yaml(openvdm_config: Path | str) -> dict:
     except FileNotFoundError:
         # e.g. OpenVDM installed outside /opt (its installer's INSTALL_ROOT)
         raise OpenVDMError(
-            f"no openvdm.yaml at {openvdm_config}: give its path with --openvdm-config, or "
-            "OpenVDM's web root URL with --site-root"
+            f"no openvdm.yaml at {openvdm_config}: give its path with --openvdm-config, or a "
+            "cruise's cruise_config.json with --cruise-config"
         ) from None
 
 
@@ -521,8 +521,10 @@ def openvdm_install_dir(openvdm_config: Path | str) -> Path:
 def queue_md5_update(install_dir: Path, run: HookRun, written: list[Path]) -> str | None:
     """Queues an MD5 summary update for the files the hook wrote, with OpenVDM's
     utils/update_md5_summary.py (OpenVDM 2.16.1). OpenVDM only hashes the files a transfer or
-    data dashboard job reports, so without this the reports stay out of the summary. Returns
-    what went wrong, or None
+    data dashboard job reports, so without this the reports stay out of the summary. The files
+    are given by their full paths: for the current cruise those are OpenVDM's own, and for a
+    cruise from its cruise_config.json OpenVDM refuses them unless its warehouse has the cruise
+    there. Returns what went wrong, or None
     """
     python = install_dir / "venv" / "bin" / "python"
     script = install_dir / "utils" / "update_md5_summary.py"
@@ -536,12 +538,10 @@ def queue_md5_update(install_dir: Path, run: HookRun, written: list[Path]) -> st
             if f.is_file()
         }
     )
-    try:
-        # OpenVDM's MD5 summary uses / separators on every platform
-        relative = [f.relative_to(run.cruise_dir).as_posix() for f in files]
-    except ValueError:
+    if not all(f.is_relative_to(run.cruise_dir) for f in files):
         return f"the reports in {run.output_dir} are outside the cruise directory {run.cruise_dir}"
-    command = [str(python), str(script), "--cruise-id", run.config.cruise_id, *relative]
+    paths = [str(f.absolute()) for f in files]
+    command = [str(python), str(script), "--cruise-id", run.config.cruise_id, *paths]
     try:
         completed = subprocess.run(
             command, capture_output=True, text=True, timeout=MD5_UPDATE_TIMEOUT, check=False

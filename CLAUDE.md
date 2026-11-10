@@ -22,12 +22,12 @@ The R2R XML is a parity target. `tests/test_r2r_comparison.py` requires its `cer
 Use uv. Run from the repo root.
 
 - Install: `uv sync`. Use `uv sync --locked` to check the lock. The OpenVDM hook needs the `openvdm` extra (pyyaml): `uv sync --extra openvdm`. The dev group has pyyaml, so the tests don't.
-- All tests: `uv run pytest`. This takes about 90 s.
+- All tests: `uv run pytest -n auto` (pytest-xdist), about half the time of a serial `uv run pytest` (about 60 s). With `-n`, every worker's session start unpacks the missing filesets into a temporary directory and renames it into place, so none sees half a fileset.
 - One test: `uv run pytest tests/test_status.py::test_name`
 - Lint and format: `uv run ruff check .` and `uv run ruff format --check .` (line length 99).
 - CI (`.github/workflows/ci.yml`) runs on PRs and pushes to `main`:
   - `lint`: ruff;
-  - `test`: the full suite on Linux with Python 3.11–3.15, plus macOS and Windows on 3.13. Nothing is fetched from R2R: the tests unpack the validation filesets committed in `tests/data/`, so every R2R comparison runs everywhere.
+  - `test`: the full suite (`-n auto`) on Linux with Python 3.11–3.15 and 3.11.3 (before tarfile's `data` filter, like Debian 12's 3.11.2, so `download.safe_extract`'s fallback runs for real), plus macOS and Windows on 3.13. Nothing is fetched from R2R: the tests unpack the validation filesets committed in `tests/data/`, so every R2R comparison runs everywhere.
   - `openvdm-contract`: `tests/test_openvdm_contract.py` against OpenVDM's own code, from a checkout of its 2.17 branch with a venv of its requirements: how OpenVDM's post_hooks worker fills INSTALL.md's hook command, its `utils/update_md5_summary.py` as `queue_md5_update` runs it (`tests/openvdm_md5/sitecustomize.py` records the Gearman job instead), and the `cruise_config.json` its cruise export writes (`tests/openvdm_driver.py` runs OpenVDM's code). Locally they use `OPENVDM_SOURCE` (default `../openvdm`, which needs `venv/`) and skip without it. Stand-ins for OpenVDM let `--cruiseID` and the old `ovdmConfig.json` name through, so check hook changes against these.
 
   Everything uses `uv sync --locked`, so commit `uv.lock` with `pyproject.toml` changes.

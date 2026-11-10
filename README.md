@@ -686,13 +686,14 @@ error, as in a config TOML.
 ## Development
 
 ```bash
-uv run pytest                                   # all tests, about a minute
+uv run pytest -n auto                           # all tests, on every core
 uv run pytest tests/test_cli.py::test_version   # one test
 uv run ruff check . && uv run ruff format --check .
 ```
 
-CI (`.github/workflows/ci.yml`) runs Ruff and the tests on Linux (Python 3.11 to 3.15), macOS and
-Windows on every pull request and push to `main`. It downloads nothing: the tests unpack the
+CI (`.github/workflows/ci.yml`) runs Ruff and the tests on Linux (Python 3.11 to 3.15, and
+3.11.3, before tarfile's "data" filter, like Debian 12's 3.11.2), macOS and Windows on every pull
+request and push to `main`. It downloads nothing: the tests unpack the
 three R2R validation filesets committed in `tests/data/`, so every comparison with R2R's reports
 runs on every OS, and draw maps without Natural Earth (`SBE_QA_NO_MAP_DATA`); with
 `fetch-map-data` run, the test marked `map_data` uses the real layers.

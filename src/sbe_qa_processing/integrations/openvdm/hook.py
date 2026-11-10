@@ -9,9 +9,9 @@ extra directory's destination; and, from OpenVDM 2.17, the cruise bounding box
 bounding box comes from the optional site config.
 
 OpenVDM 2.17 also keeps the vessel's name and contact in ``openvdm.yaml``'s ``vessel`` block,
-which it copies into each cruise's config file (``cruise_config.json``, OpenVDM's
-``CRUISE_CONFIG_FN``, named by the API's ``cruiseConfigFn``). The hook reads it from ``openvdm.yaml``
-when it has that file, else from the cruise's config file. The site config's values win;
+which it copies into each cruise's config file (``cruise_config.json`` by default; the API's
+``cruiseConfigFn``). The hook reads it from ``openvdm.yaml``, or with ``--cruise-config`` from
+that cruise's config file. The site config's values win;
 OpenVDM's fill the fields it leaves blank, and `site-config` offers them as defaults. The block's
 R2R IDs aren't used: the hook writes the core reports, not R2R's.
 
@@ -291,24 +291,6 @@ def vessel_settings(block, source: str) -> OpenVDMVessel:
     return OpenVDMVessel(settings, source)
 
 
-# OpenVDM's name for each cruise's config file (CRUISE_CONFIG_FN in www/app/Core/Config.php.dist,
-# since OpenVDM 2.9; ovdmConfig.json before), when its API doesn't give cruiseConfigFn
-CRUISE_CONFIG_FN = "cruise_config.json"
-
-
-def cruise_vessel(cruise_dir: Path, config_filename: str) -> OpenVDMVessel:
-    """The vessel block saved in the cruise's config file (cruise_config.json), if any"""
-    path = cruise_dir / config_filename
-    try:
-        block = json.loads(path.read_text()).get("vessel")
-    except FileNotFoundError:
-        return OpenVDMVessel()
-    except (OSError, ValueError, AttributeError) as error:
-        logger.warning("can't read the vessel settings from %s: %s", path, error)
-        return OpenVDMVessel()
-    return vessel_settings(block, config_filename) if block else OpenVDMVessel()
-
-
 def load_cruise_json(path: Path | str) -> dict:
     """A cruise's config from the cruise_config.json OpenVDM writes into its directory, in the
     API's shape: any cruise, past or current, without OpenVDM's API (--cruise-config). The file
@@ -410,7 +392,8 @@ def resolve(
     vessel: OpenVDMVessel | None = None,
 ) -> HookRun:
     """The QA configuration and directories for a collection system transfer. vessel is
-    openvdm.yaml's vessel block; without it, the one in the cruise's config file is used
+    openvdm.yaml's vessel block; without it, the one in a cruise config from load_cruise_json
+    (the cruise's config file) is used, named after the file
     """
     warehouse = cruise_config["warehouseConfig"]
     cruise_id = cruise_config["cruiseID"]
@@ -457,8 +440,9 @@ def resolve(
             "after today fail the dates check"
         )
     if vessel is None:
-        config_filename = warehouse.get("cruiseConfigFn") or CRUISE_CONFIG_FN
-        vessel = cruise_vessel(cruise_dir, config_filename)
+        block = cruise_config.get("vessel")
+        source = warehouse.get("cruiseConfigFn", "")
+        vessel = vessel_settings(block, source) if block else OpenVDMVessel()
     # The site config's vessel settings win; OpenVDM's fill those it leaves blank
     ship = {}
     for name in VESSEL_SETTINGS:

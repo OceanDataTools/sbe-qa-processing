@@ -680,7 +680,7 @@ The per-ship settings OpenVDM doesn't store. Every field is optional;
 | `[vessel]` | `name` | blank | The vessel's name, for the report header. From OpenVDM 2.17, `openvdm.yaml`'s `vessel.name` fills it when blank |
 | `[extent]` | `westernmost`, `easternmost`, `southernmost`, `northernmost` | none | The expected cruise area, used when OpenVDM has no `cruiseExtent` |
 | `[openvdm]` | `output_extra_directory` | `CTD_QA` | The OpenVDM extra directory the reports go into |
-| `[provenance]` | `contact_institution`, `contact_email` | blank | The report contact. From OpenVDM 2.17, `openvdm.yaml`'s `vessel.contact` fills them when blank |
+| `[provenance]` | `contact_institution`, `contact_email` | blank | The report contact. From OpenVDM 2.17, `openvdm.yaml`'s `vessel.operator` and `vessel.email` fill them when blank |
 | `[thresholds]` | as in a [config TOML](#config-toml) | defaults | e.g. for fresh water |
 | `[theme]` | as in a [config TOML](#config-toml) | none | The reports' look; paths relative to the site TOML |
 

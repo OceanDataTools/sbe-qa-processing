@@ -266,8 +266,8 @@ def site_root_from_config(openvdm_config: Path | str | dict) -> str:
 # aren't used
 VESSEL_SETTINGS = {
     "vessel_name": ("name",),
-    "contact_institution": ("contact", "institution"),
-    "contact_email": ("contact", "email"),
+    "contact_institution": ("operator",),
+    "contact_email": ("email",),
 }
 
 

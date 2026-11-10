@@ -160,7 +160,8 @@ def test_resolve_notes_r2r_settings_it_ignores(tmp_path):
 # OpenVDM 2.17's vessel block, as in openvdm.yaml and cruise_config.json
 VESSEL = {
     "name": "Robert Gordon Sproul",
-    "contact": {"institution": "Scripps Institution of Oceanography", "email": "ops@ucsd.edu"},
+    "operator": "Scripps Institution of Oceanography",
+    "email": "ops@ucsd.edu",
     "r2r": {"vesselID": "32QU", "operatorID": "edu.ucsd.sio", "schedulerID": "org.unols"},
 }
 
@@ -178,7 +179,7 @@ VESSEL = {
         ),
         # Empty values are unset
         (
-            {"name": "Falkor (too)", "contact": {"institution": "", "email": None}},
+            {"name": "Falkor (too)", "operator": "", "email": None},
             {"vessel_name": "Falkor (too)"},
         ),
         ({"r2r": {"vesselID": 3301}}, {}),  # R2R's IDs aren't used

@@ -262,14 +262,12 @@ def site_root_from_config(openvdm_config: Path | str | dict) -> str:
     return site_root if site_root.endswith("/") else site_root + "/"
 
 
-# OpenVDM 2.17's vessel block: the SiteConfig field each of its settings fills, from the first
-# of its paths that's set. The operator and email are at the top of the block
-# (OceanDataTools/openvdm#693); earlier 2.17 builds had them under contact. Its r2r IDs aren't
-# used
+# OpenVDM 2.17's vessel block: the SiteConfig field each of its settings fills. Its r2r IDs
+# aren't used
 VESSEL_SETTINGS = {
-    "vessel_name": (("name",),),
-    "contact_institution": (("operator",), ("contact", "institution")),
-    "contact_email": (("email",), ("contact", "email")),
+    "vessel_name": ("name",),
+    "contact_institution": ("operator",),
+    "contact_email": ("email",),
 }
 
 
@@ -284,14 +282,12 @@ class OpenVDMVessel:
 def vessel_settings(block, source: str) -> OpenVDMVessel:
     """The set fields of a ``vessel`` block. Empty and missing values are unset"""
     settings = {}
-    for name, paths in VESSEL_SETTINGS.items():
-        for path in paths:
-            value = block
-            for key in path:
-                value = value.get(key) if isinstance(value, dict) else None
-            if value is not None and not isinstance(value, dict) and str(value).strip():
-                settings[name] = str(value).strip()
-                break
+    for name, path in VESSEL_SETTINGS.items():
+        value = block
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        if value is not None and not isinstance(value, dict) and str(value).strip():
+            settings[name] = str(value).strip()
     return OpenVDMVessel(settings, source)
 
 

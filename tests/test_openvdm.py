@@ -216,39 +216,27 @@ def test_resolve_prefers_the_site_configs_vessel_settings(tmp_path):
     assert (config.vessel_name, config.contact_email) == ("Sproul", "tech@example.org")
 
 
-def test_resolve_reads_the_vessel_from_the_cruise_config_file(tmp_path, caplog):
-    cruise_dir = tmp_path / "SP2613"
-    cruise_dir.mkdir()
+def test_resolve_takes_the_vessel_from_a_cruise_config_file(tmp_path):
     site = openvdm.SiteConfig(vessel_name="Sproul")
-    # No cruise_config.json yet: the site config alone
+    # From OpenVDM's API, which has no vessel block: the site config alone
     run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
     assert (run.vessel_source, run.config.vessel_name) == ("none", "Sproul")
 
-    (cruise_dir / "cruise_config.json").write_text(
-        json.dumps({"cruiseID": "SP2613", "vessel": VESSEL})
-    )
-    run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
-    # The site config's name wins; the contact it leaves blank comes from cruise_config.json
+    # From a cruise's config file (load_cruise_json): its vessel block, named after the file,
+    # whatever OpenVDM's CRUISE_CONFIG_FN calls it. The site config's name wins; the contact it
+    # leaves blank comes from the file
+    loaded = cruise_config(tmp_path) | {"vessel": VESSEL}
+    loaded["warehouseConfig"]["cruiseConfigFn"] = "voyage_config.json"
+    run = openvdm.resolve(loaded, site, "CTD")
     assert (run.vessel_source, run.config.vessel_name, run.config.contact_email) == (
-        "cruise_config.json",
+        "voyage_config.json",
         "Sproul",
         "ops@ucsd.edu",
     )
-
-    # The file OpenVDM's API names, else OpenVDM's default name
-    named = cruise_config(tmp_path)
-    named["warehouseConfig"]["cruiseConfigFn"] = "ship_config.json"
-    (cruise_dir / "ship_config.json").write_text(json.dumps({"vessel": {"name": "Ship"}}))
-    run = openvdm.resolve(named, openvdm.SiteConfig(), "CTD")
-    assert (run.vessel_source, run.config.vessel_name) == ("ship_config.json", "Ship")
-    del named["warehouseConfig"]["cruiseConfigFn"]
-    run = openvdm.resolve(named, openvdm.SiteConfig(), "CTD")
-    assert run.vessel_source == openvdm.CRUISE_CONFIG_FN == "cruise_config.json"
-
-    (cruise_dir / "cruise_config.json").write_text("{not json")
-    run = openvdm.resolve(cruise_config(tmp_path), site, "CTD")
-    assert (run.vessel_source, run.config.vessel_name) == ("none", "Sproul")
-    assert "can't read the vessel settings" in caplog.text
+    # openvdm.yaml's vessel block, when given, is used instead
+    yaml_vessel = openvdm.vessel_settings({"email": "ship@example.org"}, "openvdm.yaml")
+    run = openvdm.resolve(loaded, site, "CTD", vessel=yaml_vessel)
+    assert (run.vessel_source, run.config.contact_email) == ("openvdm.yaml", "ship@example.org")
 
 
 # OpenVDM's MD5 summary as the checksum manifest ------------------------------------------------

@@ -136,8 +136,8 @@ def test_openvdms_script_takes_the_hooks_md5_update(tmp_path, monkeypatch):
 # The cruise config file OpenVDM writes -------------------------------------------------------
 
 
-def test_the_hook_reads_the_vessel_from_the_cruise_config_openvdm_writes(tmp_path):
-    """Without openvdm.yaml, the vessel comes from the file OpenVDM's export writes"""
+def test_a_cruise_from_the_file_openvdm_writes_resolves_as_from_its_api(tmp_path):
+    """--cruise-config: the cruise from OpenVDM's export, as from OpenVDM's API"""
     warehouse = tmp_path / "warehouse"
     cruise_dir = warehouse / "SP2613"
     cruise_dir.mkdir(parents=True)
@@ -147,26 +147,6 @@ def test_the_hook_reads_the_vessel_from_the_cruise_config_openvdm_writes(tmp_pat
         "export_cruise_config", cruise_config=api, vessel=vessel, cruise_dir=str(cruise_dir)
     )
     assert exported == {"verdict": True}
-    assert (cruise_dir / openvdm.CRUISE_CONFIG_FN).exists()
-    del api["warehouseConfig"]["cruiseConfigFn"]  # OpenVDM's default name, without the API's
-    run = openvdm.resolve(api, openvdm.SiteConfig(), "CTD")
-    assert run.vessel_source == "cruise_config.json"
-    assert (run.config.vessel_name, run.config.contact_email) == (
-        "Robert Gordon Sproul",
-        "ops@example.org",
-    )
-
-
-def test_a_cruise_from_the_file_openvdm_writes_resolves_as_from_its_api(tmp_path):
-    """--cruise-config: the cruise from OpenVDM's export, as from OpenVDM's API"""
-    warehouse = tmp_path / "warehouse"
-    cruise_dir = warehouse / "SP2613"
-    cruise_dir.mkdir(parents=True)
-    api = api_cruise_config(warehouse)
-    vessel = {"name": "Robert Gordon Sproul", "email": "ops@example.org"}
-    run_openvdm(
-        "export_cruise_config", cruise_config=api, vessel=vessel, cruise_dir=str(cruise_dir)
-    )
     site = openvdm.SiteConfig()
     from_file = openvdm.resolve(
         openvdm.load_cruise_json(cruise_dir / "cruise_config.json"), site, "CTD"
@@ -191,3 +171,5 @@ def test_a_cruise_from_the_file_openvdm_writes_resolves_as_from_its_api(tmp_path
         from_api.fileset_dir,
         from_api.output_dir,
     )
+    # The vessel block the export saved, named after its file
+    assert from_file.vessel_source == "cruise_config.json"

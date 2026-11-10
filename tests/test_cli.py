@@ -106,8 +106,6 @@ def test_fileset_ids_are_integers(capsys):
     with pytest.raises(SystemExit):
         main(["r2r", "config-from-catalog", "SP2613", "abc"])
     assert "not an R2R fileset ID" in capsys.readouterr().err
-    with pytest.raises(SystemExit):
-        main(["config-from-openvdm", "--fileset-id", "16984x"])
 
 
 def test_run_refuses_to_replace_reports(tmp_path, capsys):

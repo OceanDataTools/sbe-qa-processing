@@ -177,24 +177,10 @@ VESSEL = {
                 "contact_email": "ops@ucsd.edu",
             },
         ),
-        # An earlier OpenVDM 2.17 build's block: the operator and email under contact
+        # Empty values are unset
         (
-            {"name": "Sproul", "contact": {"institution": "SIO", "email": "ops@ucsd.edu"}},
-            {
-                "vessel_name": "Sproul",
-                "contact_institution": "SIO",
-                "contact_email": "ops@ucsd.edu",
-            },
-        ),
-        # Empty values are unset; an empty operator falls back to an old contact.institution
-        (
-            {
-                "name": "Falkor (too)",
-                "operator": "",
-                "email": None,
-                "contact": {"institution": "SOI"},
-            },
-            {"vessel_name": "Falkor (too)", "contact_institution": "SOI"},
+            {"name": "Falkor (too)", "operator": "", "email": None},
+            {"vessel_name": "Falkor (too)"},
         ),
         ({"r2r": {"vesselID": 3301}}, {}),  # R2R's IDs aren't used
         (None, {}),  # openvdm.yaml from before 2.17

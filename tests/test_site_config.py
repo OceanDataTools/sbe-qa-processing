@@ -166,9 +166,8 @@ OPENVDM_YAML = """\
 siteRoot: "http://127.0.0.1/"
 vessel:
     name: "Roger Revelle"
-    contact:
-        institution: "Scripps Institution of Oceanography"
-        email: ""
+    operator: "Scripps Institution of Oceanography"
+    email: ""
     r2r:
         vesselID: "33RR"
 """

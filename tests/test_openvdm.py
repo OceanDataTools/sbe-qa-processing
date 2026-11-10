@@ -160,7 +160,8 @@ def test_resolve_notes_r2r_settings_it_ignores(tmp_path):
 # OpenVDM 2.17's vessel block, as in openvdm.yaml and cruise_config.json
 VESSEL = {
     "name": "Robert Gordon Sproul",
-    "contact": {"institution": "Scripps Institution of Oceanography", "email": "ops@ucsd.edu"},
+    "operator": "Scripps Institution of Oceanography",
+    "email": "ops@ucsd.edu",
     "r2r": {"vesselID": "32QU", "operatorID": "edu.ucsd.sio", "schedulerID": "org.unols"},
 }
 
@@ -176,10 +177,24 @@ VESSEL = {
                 "contact_email": "ops@ucsd.edu",
             },
         ),
-        # Empty values are unset
+        # An earlier OpenVDM 2.17 build's block: the operator and email under contact
         (
-            {"name": "Falkor (too)", "contact": {"institution": "", "email": None}},
-            {"vessel_name": "Falkor (too)"},
+            {"name": "Sproul", "contact": {"institution": "SIO", "email": "ops@ucsd.edu"}},
+            {
+                "vessel_name": "Sproul",
+                "contact_institution": "SIO",
+                "contact_email": "ops@ucsd.edu",
+            },
+        ),
+        # Empty values are unset; an empty operator falls back to an old contact.institution
+        (
+            {
+                "name": "Falkor (too)",
+                "operator": "",
+                "email": None,
+                "contact": {"institution": "SOI"},
+            },
+            {"vessel_name": "Falkor (too)", "contact_institution": "SOI"},
         ),
         ({"r2r": {"vesselID": 3301}}, {}),  # R2R's IDs aren't used
         (None, {}),  # openvdm.yaml from before 2.17

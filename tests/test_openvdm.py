@@ -435,11 +435,8 @@ def test_hook_writes_reports_into_the_extra_directory(
     assert main([*hook, "--changed-files="]) == 0
     assert not (cruise_dir / "Products").exists()
 
-    args = [*hook, "--changed-files=CTD/SP2613_Station4.bl"]
-    # An R2R fileset ID from an older hook command is accepted and ignored
-    assert main([*args, "--fileset-id", "169847"]) == 0
+    assert main([*hook, "--changed-files=CTD/SP2613_Station4.bl"]) == 0
     captured = capsys.readouterr()
-    assert "--fileset-id is ignored" in captured.err
     # Checksums from OpenVDM's MD5 summary; the cruise box from OpenVDM's cruiseExtent
     assert "integrity checks: 0 warnings/failures" in captured.out
     output = cruise_dir / "Products/CTD_QA"

@@ -555,9 +555,7 @@ hook in `openvdm.yaml`) is in [INSTALL.md](INSTALL.md#install-for-the-openvdm-ho
   OpenVDM's extent until the next dashboard update; the next hook run then passes it. A box
   across the antimeridian has westernmost > easternmost, as in R2R's reports.
 - **Fails in one line,** which OpenVDM shows as the hook's message.
-- **Accepts and ignores `--fileset-id`,** which older hook commands pass. Before this version
-  the hook also wrote R2R's QA XML and named its reports `<cruise>_ctd_...`; those older files
-  stay in the extra directory until removed by hand. To check a cruise against R2R's tests, use
+- **Writes the core reports only,** not R2R's. To check a cruise against R2R's tests, use
   `r2r run` with a cruise TOML from R2R's catalog.
 
 ### Troubleshooting
@@ -592,8 +590,7 @@ hook's command by hand, as root, without `--changed-files`
 ```text
 sbe-qa-processing openvdm [--openvdm-config OPENVDM_YAML] [--cruise-config CRUISE_CONFIG_JSON]
                           [--site-config SITE_TOML] [--changed-files FILES]
-                          [--execute-notebook] [--theme THEME_TOML] [--fileset-id FILESET_ID]
-                          [TRANSFER]
+                          [--execute-notebook] [--theme THEME_TOML] [TRANSFER]
 ```
 
 The post-transfer hook: assesses the collection system transfer's CTD files for OpenVDM's
@@ -609,7 +606,6 @@ Installed `openvdm.yaml` files call it, so its arguments keep their names.
 | `--changed-files FILES` | none | OpenVDM's `{newFiles}` and `{updatedFiles}`; repeatable. When given, the QA runs only if they include CTD files. Use the `--changed-files={newFiles}` form, so an empty list isn't dropped |
 | `--execute-notebook` | off | Run the notebook and save its outputs |
 | `--theme THEME_TOML` | none | A [theme](#themes) file; the site TOML's `[theme]` applies on top |
-| `--fileset-id FILESET_ID` | none | Ignored, with a warning; older hook commands pass it |
 
 #### `config-from-openvdm`
 

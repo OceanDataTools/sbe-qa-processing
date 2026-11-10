@@ -72,11 +72,6 @@ def _openvdm(args: argparse.Namespace) -> int:
     from sbe_qa_processing.integrations.openvdm import hook as openvdm
     from sbe_qa_processing.qa import run_qa
 
-    if args.fileset_id:
-        print(
-            "warning: --fileset-id is ignored: the hook writes the core reports, not R2R's",
-            file=sys.stderr,
-        )
     if args.changed_files is not None and not openvdm.has_ctd_changes(args.changed_files):
         print(f"{args.transfer}: no new or updated CTD files; nothing to do")
         return 0
@@ -232,11 +227,6 @@ def add_commands(commands) -> None:
         ),
     )
     _add_openvdm_arguments(hook)
-    hook.add_argument(
-        "--fileset-id",
-        metavar="FILESET_ID",
-        help="ignored; kept so installed openvdm.yaml hook commands still run",
-    )
     hook.add_argument(
         "--changed-files",
         action="append",
